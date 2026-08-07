@@ -1,373 +1,506 @@
-# dBug Labs Recruitments — Backend Implementation Plan
+# dBug Labs Recruitment Portal — Implementation Plan
 
-Status: **plan only, nothing here is built yet.** The repo today is the Next.js 16 landing
-page with a UI-only application form (`app/page.jsx`, `onSubmit` is a no-op).
+The repository currently contains a Next.js landing page with a UI-only application form in [app/page.jsx](app/page.jsx), and the submission handler is still a placeholder.
 
-Three phases, each shippable on its own:
-
-| Phase | What it delivers | Blocking for |
-|---|---|---|
-| **1 — Intake** | The form actually saves. Applications + resume PDFs in MongoDB. | Everything |
-| **2 — Candidate dashboard** | Applicants log in, see assigned tasks, submit a GitHub / Drive link. | Phase 3 review |
-| **3 — Admin panel** | Review, assign tasks per domain, shortlist, email, WhatsApp invites. | — |
+This document formalizes the requirements and delivery plan for the recruitment portal while preserving the existing product scope.
 
 ---
 
-## 1. Stack decisions
+## 1. Project Overview
 
-| Concern | Choice | Why this over the alternative |
+### 1.1 Purpose
+The dBug Labs Recruitment Portal 2026 is a web-based system for managing the full recruitment lifecycle, from public application intake to candidate evaluation, task submission, interview scheduling, and final outcome communication.
+
+### 1.2 Goals
+The platform must provide a secure and structured way to:
+- collect applicant information and resume uploads,
+- track candidate progress through the recruitment pipeline,
+- assign domain-specific tasks to shortlisted candidates,
+- support review workflows for administrators and domain leads, and
+- send automated emails related to recruitment events.
+
+### 1.3 Delivery Phases
+
+| Phase | Primary Outcome | Dependency Level |
 |---|---|---|
-| Database | **MongoDB Atlas** (M0 free → M10 if needed) | Already decided. Flexible per-domain task shapes suit a document store. |
-| Driver | **`mongodb` native driver + Zod** | Mongoose's model caching fights serverless HMR and adds a schema layer we'd duplicate in Zod anyway (we need Zod regardless, for request validation). |
-| Resume storage | **GridFS bucket** (`resumes.files` / `resumes.chunks`) | See §3. |
-| Auth | **Auth.js v5 (NextAuth)** — Google OAuth + email OTP fallback | Students have college Google accounts; no password storage, and we get a verified email for free. OTP covers anyone without one. |
-| Email | **Resend** | Clean API, React Email templates, good deliverability on a custom domain. Nodemailer + college SMTP is the fallback if a domain isn't available. |
-| Validation | **Zod**, one schema per payload, shared client/server | Single source of truth for the form and the API. |
-| Hosting | **Vercel** | Already a Next app. See the 4.5 MB caveat in §3. |
-| Rate limiting | **Upstash Redis** (`@upstash/ratelimit`) | The public form is an open endpoint. A Mongo-backed counter works if you'd rather not add a service. |
-| Spam | **Cloudflare Turnstile** + honeypot field | Invisible to real users, unlike a captcha. |
-
-**Deliberately not doing:** a custom password/session system, S3/Cloudinary for resumes
-(explicitly Mongo), or automated WhatsApp group adds (§8 — the API doesn't allow it).
+| Phase 1 — Intake | Applications are accepted and stored with resume PDFs | Foundation for all later work |
+| Phase 2 — Candidate Dashboard | Candidates can authenticate and submit task links | Depends on Phase 1 |
+| Phase 3 — Admin and Lead Panel | Reviewers can manage candidates, assign tasks, and schedule interviews | Depends on Phase 2 |
 
 ---
 
-## 2. Directory structure
+## 2. Scope and Functional Areas
 
-Layered on top of what exists. Nothing in `app/page.jsx` needs to move for Phase 1.
+### 2.1 Public Intake Portal
+The public portal must present recruitment information and allow applicants to submit a complete application.
 
-```
+### 2.2 Candidate Dashboard
+Authenticated candidates must be able to view their application status, review assigned tasks, and submit their deliverables.
+
+### 2.3 Administrator and Domain Lead Panel
+Authorized reviewers must be able to manage applications, assign tasks, manage statuses, schedule interviews, and dispatch communications.
+
+---
+
+## 3. User Roles and Permissions
+
+| Role | Access Level | Responsibilities |
+|---|---|---|
+| Public Applicant | Unauthenticated | Views recruitment information and submits an application |
+| Candidate | Authenticated | Views dashboard, monitors application status, and submits task links |
+| Domain Lead | Authenticated with role `domain_lead` | Reviews candidates within assigned domains and assigns tasks |
+| Administrator | Authenticated with role `admin` | Full access to all recruitment management workflows |
+
+### 3.1 Access Rules
+- Candidates may view only their own application and task-related data.
+- Domain leads may access only the domains assigned to them.
+- Administrators may access the full system.
+- Protected admin routes must enforce role validation on the server side.
+
+---
+
+## 4. Functional Requirements
+
+### 4.1 Module 1 — Public Intake and Landing Experience
+
+#### 4.1.1 Landing Page
+The landing page must present:
+- club and recruitment information,
+- domain highlights,
+- timeline details,
+- process steps,
+- FAQs,
+- contact information, and
+- an application entry point.
+
+The system must detect whether applications are still open using the `APPLICATIONS_CLOSE_AT` configuration and disable the intake form when the deadline has passed.
+
+#### 4.1.2 Public Application Form
+Location: [app/page.jsx](app/page.jsx) and `POST /api/applications`
+
+##### Form Fields
+
+| Field | Type | Required | Validation Rules |
+|---|---|---|---|
+| Name | Text input | Yes | Minimum 2 characters, maximum 100 |
+| Registration Number | Text input | Yes | Minimum 3 characters, maximum 30; alphanumeric |
+| Section | Text input | Yes | Minimum 1 character, maximum 50 |
+| Department | Select | Yes | Allowed values: `CSE`, `IT`, `ECE`, `Other` |
+| Email Address | Email input | Yes | Must be a valid email; stored in lowercase; unique per drive |
+| Country Code | Select | Yes | Allowed values: `+91`, `+1`, `+44` |
+| Phone Number | Text input | Yes | Numeric string; must match the selected country code format |
+| College / University | Text input | Yes | Minimum 2 characters, maximum 150 |
+| Year of Study | Select | Yes | Allowed values: `1st Year`, `2nd Year`, `3rd Year`, `4th Year` |
+| Domain Preferences | Multi-select | Yes | 1 to 2 selections from the approved domain list: `Web Development`, `AI / ML`, `App Development`, `Creative Design`, `Public Relations`, `Corporate & Events` |
+| Why dBug Labs? | Textarea | Yes | Minimum 20 characters, maximum 500 |
+| Resume / CV | File upload | Yes | PDF only; maximum 4 MB; must include a valid PDF header. Required for students in `2nd Year` and above. |
+| Portfolio / Work Link | URL input | No | Must be a valid HTTP or HTTPS URL |
+| Terms Declaration | Checkbox | Yes | Must be checked |
+| Honeypot Field | Hidden field | System guard | Must remain empty |
+| Turnstile Token | Hidden token | Yes | Must be verified by the server |
+
+##### Form Actions
+- Primary action: `Submit Application`
+- The button must show a loading state and upload progress during submission.
+- On success, the form must be replaced with a confirmation view showing an application reference ID.
+
+##### Validation and Error Handling
+- Maximum 5 submissions per IP address per hour.
+- Duplicate applications for the same email in the same recruitment drive must return a conflict response.
+- Invalid files or oversized files must produce clear user-facing error messages.
+- Successful submissions must trigger a confirmation email.
+
+### 4.2 Module 2 — Authentication and Candidate Access
+
+#### 4.2.1 Candidate Login
+The system must support authentication using Google OAuth and an email-based OTP fallback.
+
+##### OTP Form Fields
+
+| Field | Type | Required | Validation Rules |
+|---|---|---|---|
+| Email Address | Email input | Yes | Must match a known application record |
+| One-Time Password | Numeric input | Yes | Exactly 6 digits; valid for 5 minutes |
+
+##### Authentication Behavior
+- The system must verify the candidate’s email against an existing application.
+- If an application exists, it must create or update the corresponding user record and redirect the user to the dashboard.
+- If no matching application exists, the system must show a clear notice and must not create an empty application automatically.
+
+### 4.3 Module 3 — Candidate Dashboard
+
+#### 4.3.1 Dashboard Routes
+The dashboard must provide:
+- `/dashboard` for status tracking and profile summary,
+- `/dashboard/tasks` for task lists and due dates, and
+- `/dashboard/tasks/[taskId]` for task details and submission entry.
+
+#### 4.3.2 Candidate Status Lifecycle
+Candidates must be able to view the recruitment lifecycle through the following stages:
+1. submitted
+2. under_review
+3. shortlisted
+4. task_assigned
+5. task_submitted
+6. interview_scheduled
+7. selected or rejected
+
+#### 4.3.3 Task Submission Form
+
+| Field | Type | Required | Validation Rules |
+|---|---|---|---|
+| Submission Type | Radio / select | Yes | Allowed values: `github` or `drive` |
+| Deliverable URL | URL input | Yes | Must match the specified host rules for GitHub or Google Drive |
+| Submission Notes | Textarea | No | Maximum 300 characters |
+
+##### Submission Rules
+- Candidates may resubmit before the deadline.
+- Previous submissions must be preserved in history instead of being overwritten.
+- Submissions made after the due date must be accepted but flagged as late.
+- The system must validate link visibility where possible.
+
+### 4.4 Module 4 — Admin and Domain Lead Panel
+
+#### 4.4.1 Application Review View
+The review interface must support:
+- filtering by domain, status, year, and branch,
+- text search,
+- pagination,
+- full candidate detail review,
+- resume PDF streaming,
+- CSV export.
+
+#### 4.4.2 Task Authoring Form
+
+| Field | Type | Required | Validation Rules |
+|---|---|---|---|
+| Recruitment Drive | Text input | Yes | Defaults to the current recruitment drive |
+| Domain | Select | Yes | Allowed values: `web`, `aiml`, `app`, `creative`, `pr`, `corp` |
+| Task Title | Text input | Yes | Minimum 5 characters, maximum 150 |
+| Task Brief | Markdown editor | Yes | Detailed instructions required |
+| Resource Links | Dynamic array | No | Each item requires a label and a valid URL |
+| Submission Type | Select | Yes | Allowed values: `github`, `drive`, `either` |
+| Submission Deadline | Date/time picker | Yes | Must be in the future |
+| Active Status | Toggle | Yes | Boolean value |
+
+#### 4.4.3 Bulk Assignment Flow
+- Administrators must be able to assign a task to multiple shortlisted candidates in a single action.
+- A confirmation step must show the exact recipient count before execution.
+- Assignment should create the required records and queue the relevant notifications.
+
+#### 4.4.4 Interview Scheduling Form
+
+| Field | Type | Required | Validation Rules |
+|---|---|---|---|
+| Candidate | Searchable select | Yes | Must reference a shortlisted candidate |
+| Domain | Read-only / select | Yes | Must reflect the assigned domain |
+| Interview Slot | Date/time picker | Yes | Must be a future timestamp |
+| Interview Mode | Select | Yes | Allowed values: `online` or `offline` |
+| Location / Link | Text input | Yes | Online mode requires a valid link; offline mode requires a physical location |
+| Panel Members | Multi-select | Yes | Must reference valid reviewer accounts |
+
+#### 4.4.5 Email Communication Module
+The system must send recruitment-related emails for important lifecycle events.
+
+| Event | Template | Dynamic Content |
+|---|---|---|
+| Application submitted | Application Received | Candidate name, application ID, domain preferences |
+| Task assigned | Task Notification | Candidate name, task title, deadline |
+| Deadline reminder | Task Reminder | Candidate name, remaining time, submission link |
+| Interview scheduled | Interview Invitation | Candidate name, time, mode, location/link |
+| Final outcome recorded | Result Notification | Candidate name and selection decision |
+| Selection outcome | Welcome / WhatsApp Invite | Candidate name and onboarding details |
+
+#### 4.4.6 Audit Logging
+Every significant action must be appended to an audit log, including status changes, task assignments, interview scheduling, and bulk email sends.
+
+---
+
+## 5. Interface and API Requirements
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/applications` | Public application submission |
+| `GET /api/resumes/[applicationId]` | Secure resume PDF streaming |
+| `POST /api/submissions` | Candidate task link submission |
+| `GET /api/admin/applications` | Admin candidate search, filter, and pagination |
+| `PATCH /api/admin/applications` | Admin candidate status update |
+| `POST /api/admin/tasks` | Task creation and assignment |
+| `POST /api/admin/interviews` | Interview scheduling |
+| `POST /api/admin/emails` | Bulk email dispatch |
+| `POST /api/auth/[...nextauth]` | Authentication handler |
+
+---
+
+## 6. Backend File Structure
+
+The backend and application structure should be organized as follows to keep the implementation modular and maintainable:
+
+```text
 app/
-  page.jsx                     # landing page (exists)
-  layout.jsx  globals.css      # (exist)
-  dashboard/                   # phase 2 — candidate, auth required
-    layout.jsx  page.jsx
+  page.jsx                     # landing page and public intake form
+  layout.jsx                   # app layout and global shell
+  globals.css                  # global styles
+  dashboard/                   # candidate dashboard routes
+    layout.jsx
+    page.jsx
     tasks/[taskId]/page.jsx
-  admin/                       # phase 3 — role: admin | domain_lead
-    layout.jsx  page.jsx
+  admin/                       # admin and domain lead routes
+    layout.jsx
+    page.jsx
     applications/[id]/page.jsx
-    tasks/  interviews/
+    tasks/
+    interviews/
   api/
-    applications/route.js            # POST public intake
-    resumes/[applicationId]/route.js # GET admin-only, streams the PDF
-    submissions/route.js             # POST candidate link submission
+    applications/route.js
+    resumes/[applicationId]/route.js
+    submissions/route.js
     admin/
-      applications/route.js          # GET list/filter, PATCH status
-      tasks/route.js                 # POST assign, GET list
-      interviews/route.js            # POST schedule
-      emails/route.js                # POST send (templated, batched)
+      applications/route.js
+      tasks/route.js
+      interviews/route.js
+      emails/route.js
     auth/[...nextauth]/route.js
 lib/
-  db.js            # cached MongoClient (§9)
-  schemas.js       # Zod: application, submission, task, interview
-  storage.js       # putResume / getResume — GridFS behind an interface
-  auth.js          # Auth.js config + session helpers
-  rbac.js          # requireRole('admin') guards
-  email/           # Resend client + React Email templates
-  audit.js         # append-only action log
-components/        # extracted UI, shared between landing / dashboard / admin
+  db.js                        # MongoDB connection and caching
+  schemas.js                   # Zod validation schemas
+  storage.js                   # file upload and resume storage helpers
+  auth.js                      # authentication configuration and helpers
+  rbac.js                      # role-based access control helpers
+  email/
+  audit.js
+components/
+  # shared UI components for landing, dashboard, and admin views
 scripts/
-  gen-textures.mjs # (exists)
-  seed-admins.mjs  # bootstrap the admin allowlist
+  gen-textures.mjs
+  seed-admins.mjs
 ```
 
----
-
-## 3. Resume storage — the decision and its cost
-
-**Recommendation: GridFS**, not a `BinData` field on the application document.
-
-- A single BSON document caps at 16 MB. GridFS chunks around it, so a large PDF can never
-  fail the write in a way that also loses the application.
-- Downloads **stream** — the admin panel can serve a 4 MB PDF without pulling it into
-  function memory.
-- Deleting an application and its file stays a two-step but explicit operation.
-
-**Be honest about the tradeoff:** Mongo is not a blob store. 600 applicants × ~1.5 MB is
-~1 GB, which blows past the Atlas M0 512 MB tier and inflates every backup. Mitigations:
-
-1. **Hard cap uploads at 4 MB.** Not arbitrary — Vercel serverless functions reject
-   request bodies over **4.5 MB**, so anything larger can't reach the API anyway. Enforce
-   client-side (instant feedback) *and* server-side (the real check).
-2. Keep all reads/writes behind `lib/storage.js` (`putResume`, `getResume`, `deleteResume`).
-   If storage cost bites, that file becomes an S3/R2 adapter and no call site changes.
-3. Purge resumes for rejected candidates after the drive closes.
-
-**Validate uploads properly** — extension and MIME type are both client-supplied:
-
-- Read the first bytes and require the `%PDF-` magic number.
-- Cap at 4 MB, reject 0-byte files.
-- Store `contentType: "application/pdf"` yourself; never echo back the client's value.
-- Serve downloads with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`
-  so a malicious PDF can never render in our origin.
+This structure preserves the current project layout while separating public pages, authenticated routes, API handlers, shared libraries, and reusable UI components.
 
 ---
 
-## 4. Data model
+## 7. Data Model and Storage Approach
 
-Six collections. Timestamps (`createdAt` / `updatedAt`) on all of them.
+### 7.1 Core Collections
 
-### `applications`
-The Phase 1 payload. One per person per drive.
+#### `applications`
+Stores the intake form submission for each candidate.
 
 ```js
 {
-  _id, driveId: "2026",
-  name, email,            // email lowercased — the join key for login
-  phone, rollNumber, branch, year,
-  domains: ["web", "aiml"],     // preferences, ordered
-  portfolio: { github, linkedin, website },
-  why: String,                  // the 500-char answer
-  resume: { fileId: ObjectId, filename, size, uploadedAt },
-  status: "submitted" | "under_review" | "shortlisted" | "task_assigned"
-        | "task_submitted" | "interview_scheduled" | "selected" | "rejected",
-  assignedDomain: "web" | null, // set by admin, may differ from preference
-  source, userAgent, ip,        // spam forensics
+  _id,
+  driveId,
+  name,
+  email,
+  phone,
+  college,
+  rollNumber,
+  branch,
+  year,
+  domains,
+  portfolio,
+  why,
+  resume,
+  status,
+  assignedDomain,
+  source,
+  userAgent,
+  ip,
+  createdAt,
+  updatedAt
 }
 ```
 
-Indexes: `{ driveId, email }` **unique** (one application per drive — the constraint that
-stops duplicate submissions), `{ status }`, `{ assignedDomain, status }`, `{ createdAt: -1 }`.
-
-### `users`
-Created on first login. Linked to an application by matching lowercased email.
+#### `users`
+Stores authenticated users and role information.
 
 ```js
-{ _id, email, name, image, applicationId, role: "candidate" | "domain_lead" | "admin",
-  domains: ["web"],   // which domains a lead can see; ignored for candidates
-  lastLoginAt }
+{
+  _id,
+  email,
+  name,
+  image,
+  applicationId,
+  role,
+  domains,
+  lastLoginAt,
+  createdAt,
+  updatedAt
+}
 ```
 
-Index: `{ email }` unique.
-
-### `tasks`
-A task **template** per domain, authored by admins.
+#### `tasks`
+Stores domain task templates created by admins.
 
 ```js
-{ _id, driveId, domain: "web", title, brief: String /* markdown */,
-  resources: [{ label, url }], dueAt, submissionType: "github" | "drive" | "either",
-  active: Boolean, createdBy }
+{
+  _id,
+  driveId,
+  domain,
+  title,
+  brief,
+  resources,
+  dueAt,
+  submissionType,
+  active,
+  createdBy,
+  createdAt,
+  updatedAt
+}
 ```
 
-### `assignments`
-Which candidate got which task. Separate from `tasks` so one template serves many people
-and the due date can be overridden per person.
+#### `assignments`
+Links candidates to assigned tasks and tracks deliverables.
 
 ```js
-{ _id, applicationId, taskId, assignedAt, assignedBy, dueAt,
-  status: "assigned" | "submitted" | "late" | "reviewed",
-  submission: { url, type: "github"|"drive", notes, submittedAt },
-  review: { score: 1-10, notes, reviewedBy, reviewedAt } }
+{
+  _id,
+  applicationId,
+  taskId,
+  assignedAt,
+  assignedBy,
+  dueAt,
+  status,
+  submission,
+  history,
+  review,
+  createdAt,
+  updatedAt
+}
 ```
 
-Index: `{ applicationId, taskId }` unique, `{ status, dueAt }`.
+#### `interviews`
+Stores interview scheduling and outcome details.
 
-### `interviews`
 ```js
-{ _id, applicationId, domain, slotAt, mode: "online"|"offline", location, meetLink,
-  panel: [userId], status: "scheduled"|"done"|"no_show"|"cancelled",
-  outcome: { verdict: "select"|"reject"|"hold", notes, by } }
+{
+  _id,
+  applicationId,
+  domain,
+  slotAt,
+  mode,
+  location,
+  meetLink,
+  panel,
+  status,
+  outcome,
+  createdAt,
+  updatedAt
+}
 ```
 
-### `auditLog`
-Append-only. Non-negotiable once multiple people can reject candidates and send mail.
+#### `auditLog`
+Stores append-only administrative actions.
 
 ```js
-{ _id, actorId, actorEmail, action: "application.status_changed",
-  target: { collection, id }, before, after, at, ip }
+{
+  _id,
+  actorId,
+  actorEmail,
+  action,
+  target,
+  before,
+  after,
+  at,
+  ip
+}
 ```
 
----
-
-## 5. Phase 1 — Intake
-
-**Endpoint:** `POST /api/applications`, `multipart/form-data`.
-
-A Route Handler rather than a Server Action, because we want an explicit status code per
-failure mode, per-IP rate limiting at the edge, and an upload progress bar (XHR).
-
-Order of operations — validate cheap things before touching the file:
-
-1. Rate limit by IP (5 submissions / hour) and by email (1 / drive).
-2. Verify Turnstile token; check the honeypot field is empty.
-3. Zod-parse the text fields → `422` with per-field errors on failure.
-4. Validate the PDF: size, magic bytes → `413` / `415`.
-5. Check `{ driveId, email }` doesn't already exist → `409` with a "you already applied" message.
-6. Stream the PDF into GridFS → get `fileId`.
-7. Insert the application. **If this insert fails, delete the orphaned GridFS file.**
-8. Queue the confirmation email (don't block the response on Resend).
-9. `201` with `{ applicationId }`.
-
-**Client work:** wire the existing form's `onSubmit`, add per-field error rendering, a
-disabled/pending state, an upload progress bar, and a success screen with the application
-ID. The form markup already exists — this is wiring, not redesign.
-
-**Also needed:** an application-closed guard driven by config, so the form self-disables
-after the deadline instead of needing a deploy.
+### 6.2 Storage Decision
+Resume files should be stored through GridFS rather than as inline binary data. This avoids the 16 MB BSON document constraint and supports efficient streaming for review workflows.
 
 ---
 
-## 6. Phase 2 — Candidate dashboard
+## 7. Non-Functional Requirements
 
-**Login:** Auth.js with Google OAuth + email OTP. On first sign-in, look up an application
-by lowercased email:
+### 7.1 Security
+- File uploads must be limited and validated.
+- PDFs must be served through an authenticated streaming route.
+- Role-based checks must be enforced on every protected action.
+- Sensitive information must not be exposed in logs or error output.
 
-- Match → create the `users` doc, link `applicationId`, role `candidate`.
-- No match → land them on "we can't find an application for this address", with a way to
-  correct the email. **Don't auto-create an empty application.**
+### 7.2 Performance
+- Resume streaming should be memory efficient.
+- Database connections should be pooled and reused where possible.
+- The intake flow should remain responsive even when email dispatch is handled asynchronously.
 
-**Routes:**
-
-| Route | Shows |
-|---|---|
-| `/dashboard` | Status timeline (submitted → shortlisted → task → interview → result), assigned domain, profile summary. |
-| `/dashboard/tasks` | Assigned tasks, due dates, submission state. |
-| `/dashboard/tasks/[id]` | Task brief, resources, submission form. |
-
-**Submission** (`POST /api/submissions`): a URL plus optional notes. Validate by type —
-
-- GitHub: `https://github.com/<owner>/<repo>` (reject gists and non-GitHub hosts if the
-  task says `github`). Optionally HEAD the URL to confirm it's public — a private repo the
-  reviewer can't open is the single most common failure in a drive like this.
-- Drive: `https://drive.google.com/...` or `docs.google.com/...`. Warn loudly that link
-  sharing must be "anyone with the link", because we cannot check it server-side.
-
-Allow resubmission until `dueAt`; keep prior submissions in a `history` array rather than
-overwriting. After the due date, accept but mark `status: "late"` — the admin decides.
-
-**Access control:** every dashboard query filters by the session's `applicationId`. Never
-trust an ID from the URL or body.
+### 7.3 Reliability and Anti-Spam
+- Public intake endpoints must enforce rate limiting.
+- Bot protection must be present through Turnstile and a honeypot field.
+- Suggestion: use dry-run email behavior during development and staging to avoid accidental sends.
 
 ---
 
-## 7. Phase 3 — Admin panel
+## 8. Technical Decisions
 
-Gate on `role in ("admin", "domain_lead")`. Domain leads see only their `domains`.
-
-**Applications view** — table with filters (domain, status, year, branch), text search,
-sort, pagination (`skip`/`limit` is fine at this scale). Row → detail drawer with the full
-answer, resume preview (streams from `/api/resumes/[id]`), and status actions. Bulk select
-for shortlisting and mail. CSV export.
-
-**Task assignment** — author a task per domain, then assign to a filtered set of candidates
-in one action ("all shortlisted in Web Dev"). Writes N `assignments` + queues N emails.
-Show a confirmation with the exact recipient count before sending.
-
-**Shortlisting** — a status transition plus an audit entry. Guard the transitions
-(`submitted → shortlisted` yes; `rejected → interview_scheduled` no) in one place,
-`lib/statusMachine.js`, so the rule isn't reimplemented per route.
-
-**Interviews** — define slots, assign candidates, send an email with time, mode and meet
-link. A per-panel day view is enough; don't build a calendar.
-
-**Email** — templated and always previewed:
-
-| Template | Trigger |
-|---|---|
-| Application received | Phase 1 submit |
-| Shortlisted + task assigned | Assignment created |
-| Task reminder | Cron, 24h before `dueAt` |
-| Interview scheduled | Interview created |
-| Result: selected / rejected | Outcome recorded |
-| Welcome + WhatsApp invite | On selection |
-
-Rules that save you from a bad afternoon: render a preview with real data before sending,
-require typing the recipient count to confirm a bulk send, send through a queue with
-retries (Resend batch API, ≤100 per call), record every send in `auditLog`, and keep a
-`DRY_RUN=true` env that logs instead of sending. Set up SPF/DKIM on the sending domain
-before the first bulk send or you'll land in spam.
+| Concern | Choice | Reason |
+|---|---|---|
+| Framework | Next.js 16 | Supports the existing app structure and server-side routes |
+| Database | MongoDB Atlas | Flexible for recruitment-related document structures |
+| Resume Storage | GridFS | Better suited for large PDF files than embedded document storage |
+| Authentication | Auth.js v5 | Supports both Google OAuth and email OTP |
+| Validation | Zod | Shared validation across client and server |
+| Email | Resend + React Email | Clear transactional template support |
+| Rate Limiting | Upstash Redis | Good fit for public endpoint protection |
+| Spam Protection | Cloudflare Turnstile + honeypot | Lightweight and user-friendly |
 
 ---
 
-## 8. WhatsApp — read this before promising it
+## 9. Implementation Sequencing
 
-**You cannot programmatically add someone to a WhatsApp group.** The Cloud API has no
-"add participant" for arbitrary numbers; it's blocked deliberately as an anti-spam measure.
-Anyone claiming otherwise is describing an unofficial library that will get the number banned.
+| Step | Milestone | Expected Output |
+|---|---|---|
+| 1 | Database and schema foundation | Mongo connection and core collections ready |
+| 2 | Intake API and GridFS upload | Applications can be stored with resumes |
+| 3 | Frontend form wiring | Submission works end to end for Phase 1 |
+| 4 | Email confirmation | Applicants receive a receipt email |
+| 5 | Authentication setup | Candidate login works through Google or OTP |
+| 6 | Dashboard shell | Candidates can view status and tasks |
+| 7 | Task submission flow | Candidates can submit deliverables |
+| 8 | Admin review workflow | Reviewers can view and manage applications |
+| 9 | Task assignment and bulk actions | Admins can assign tasks at scale |
+| 10 | Status machine and audit trail | Candidate transitions are controlled and logged |
+| 11 | Interview scheduling | Interviews can be created and communicated |
+| 12 | Candidate outcome flow | Final outcomes and invite links are delivered |
 
-What actually works:
-
-1. **Invite links (recommended).** Create one group per domain, get its
-   `chat.whatsapp.com/<code>` link, store it in a `config` collection per domain, and
-   include it in the selection email + the dashboard. Zero API, zero cost, works today.
-2. **WhatsApp Cloud API for notifications only** — template messages to candidates who
-   opted in, with the invite link in the body. Needs a Meta Business account, a verified
-   number, and pre-approved templates (24-48h review). Worth it only if you want delivery
-   receipts; email plus a link is otherwise equivalent.
-
-Plan for option 1. Treat option 2 as a later enhancement.
+Roughly 15 working days are expected for the full implementation plan.
 
 ---
 
-## 9. Cross-cutting concerns
+## 10. Cross-Cutting Concerns
 
-**Mongo connection in Next.** Serverless functions and dev HMR both re-evaluate modules,
-so a naive `new MongoClient()` leaks connections until Atlas refuses them. Cache the
-promise on `globalThis` in development, module scope in production — the standard
-`lib/db.js` pattern. Get this right on day one.
+### 10.1 Environment Variables
+The following environment variables should be configured:
 
-**Environment variables** (`.env.local`, and set in Vercel):
-
-```
-MONGODB_URI=            MONGODB_DB=dbug_recruitment
-AUTH_SECRET=            AUTH_GOOGLE_ID=          AUTH_GOOGLE_SECRET=
-RESEND_API_KEY=         EMAIL_FROM=              EMAIL_DRY_RUN=true
-TURNSTILE_SECRET_KEY=   NEXT_PUBLIC_TURNSTILE_SITE_KEY=
-UPSTASH_REDIS_REST_URL= UPSTASH_REDIS_REST_TOKEN=
-APPLICATIONS_CLOSE_AT=  ADMIN_BOOTSTRAP_EMAILS=
+```text
+MONGODB_URI=
+MONGODB_DB=
+AUTH_SECRET=
+AUTH_GOOGLE_ID=
+AUTH_GOOGLE_SECRET=
+RESEND_API_KEY=
+EMAIL_FROM=
+EMAIL_DRY_RUN=true
+TURNSTILE_SECRET_KEY=
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+APPLICATIONS_CLOSE_AT=
+ADMIN_BOOTSTRAP_EMAILS=
 ```
 
-`.gitignore` already excludes `.env*.local`.
+### 10.2 Testing Priorities
+The most valuable tests to implement first are:
+- Zod validation rules,
+- status transition enforcement,
+- PDF validation,
+- duplicate submission checks.
 
-**Security checklist:** role check server-side on every admin route (never rely on the UI
-hiding a button); resumes only via an authenticated streaming route, never a public URL;
-rate limit the public form and OTP requests; audit every state change and send; PII stays
-out of logs. Confirm with the club whether personal data needs a retention window —
-if so, add a purge script.
-
-**Testing worth writing:** the Zod schemas, the status machine's legal transitions, the
-PDF validator (a `.pdf` that isn't a PDF must be rejected), and the duplicate-application
-constraint. Skip UI tests; hand-test the flows.
-
----
-
-## 10. Sequencing
-
-Estimates assume one developer working evenings.
-
-| # | Milestone | Output | Est. |
-|---|---|---|---|
-| 1 | Atlas cluster, `lib/db.js`, Zod schemas, indexes | Connection proven from a route | 0.5 d |
-| 2 | `POST /api/applications` + GridFS + validation | Applications land in Mongo | 1.5 d |
-| 3 | Wire the existing form, errors, progress, success state | **Phase 1 shippable** | 1 d |
-| 4 | Resend + "application received" template | Confirmation mail | 0.5 d |
-| 5 | Auth.js, Google + OTP, `users`, application linking | Login works | 1.5 d |
-| 6 | Dashboard shell, status timeline | Candidates see status | 1 d |
-| 7 | Tasks + assignments + submission with URL validation | **Phase 2 shippable** | 2 d |
-| 8 | Admin shell, RBAC, applications table + filters + resume stream | Review works | 2 d |
-| 9 | Task authoring + bulk assign + bulk email | Assignment works | 1.5 d |
-| 10 | Shortlisting, status machine, audit log | Safe transitions | 1 d |
-| 11 | Interviews + scheduling mail | Interviews work | 1 d |
-| 12 | Selection mail + WhatsApp invite links + CSV export | **Phase 3 shippable** | 1 d |
-
-Roughly **15 working days**. Milestones 1-4 are the only ones that must land before the
-drive opens; the rest can ship while applications are open.
-
----
-
-## 11. Open questions
-
-These change the design, so answer them before milestone 1:
-
-1. **One drive or many?** The schema assumes `driveId: "2026"` so next year's drive doesn't
-   need a migration. Confirm that's wanted.
-2. **Can someone apply to multiple domains?** Currently modelled as ordered preferences
-   with a single `assignedDomain`. If a person can be selected into two domains
-   simultaneously, `assignments` and the status field both change shape.
-3. **Custom email domain?** `recruitments@dbuglabs.<college>.edu` vs a Gmail address.
-   Bulk mail from a free Gmail account will hit spam folders.
-4. **Who counts as admin?** Bootstrap list of emails, and whether domain leads should be
-   restricted to their own domain's candidates (assumed yes).
-5. **Resume retention** — delete rejected candidates' PDFs after the drive, or keep them?
-6. **Expected applicant count?** Under ~1000, everything above runs comfortably on Atlas
-   M0 + Vercel Hobby. Beyond that, revisit the storage tier.
+### 10.3 Open Questions
+1. Should the system support multiple recruitment drives in the same database?
+2. Can a candidate be assigned to more than one domain at the same time?
+3. Is there a preferred custom email domain for sending recruitment mail?
+4. Who should be considered an administrator during the initial rollout?
+5. Should resumes be retained after a candidate is rejected?
+6. What is the expected applicant volume for the first recruitment cycle?
