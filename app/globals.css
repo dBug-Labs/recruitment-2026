@@ -1,0 +1,266 @@
+/* ===== dBug Labs — Brand New Day ===== */
+:root{
+  --bg:#08050a;
+  --panel:rgba(14,8,17,.6);
+  --text:#f4eef6;
+  --muted:#a99bad;
+  --muted2:#cfc3d2;
+  --red:#ff2d4f;
+  --red-soft:#ff5a72;
+  --pink:#e0479a;
+  --purple:#8b3dff;
+  --purple-soft:#b06bff;
+  --lilac:#c07adf;
+  --grad:linear-gradient(95deg,#f2334f,#8b3dff);
+  --grad-text:linear-gradient(100deg,#f4304c 0%,#e02a63 30%,#a92fb4 62%,#7c3aed 90%);
+  --line:rgba(255,255,255,.1);
+  --hair:rgba(255,45,79,.22);
+  --film:.7;         /* strength of the page-wide dirt pass — 0 turns it off */
+  --vignette:.35;    /* strength of the print falloff at the edges */
+  --panel-grain:.42; /* strength of the printed texture on cards and panels */
+  /* the footer's 🕷 (U+1F577), drawn into an SVG so it can ride the pointer */
+  --spider:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Ctext x='14' y='22' font-size='21' text-anchor='middle' fill='%23ff2d4f'%3E%F0%9F%95%B7%3C/text%3E%3C/svg%3E") 14 14;
+  --spider-lg:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='38' height='38'%3E%3Ctext x='19' y='30' font-size='29' text-anchor='middle' fill='%23ff5a72'%3E%F0%9F%95%B7%3C/text%3E%3C/svg%3E") 19 19;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}          /* the canvas colour — body stays transparent so the */
+html,body{margin:0;padding:0;color:var(--text)}   /* fixed texture behind it can show through */
+body{font-family:var(--font-barlow),system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:var(--red-soft);text-decoration:none}
+a:hover{color:var(--purple-soft)}
+input,select,textarea,button{font-family:inherit}
+input::placeholder,textarea::placeholder{color:#6a5f6d}
+select{appearance:none;-webkit-appearance:none}
+
+/* the spider comes off the footer and onto the pointer — a bigger, brighter one on
+   anything clickable, so hover still announces itself without the hand cursor */
+body{cursor:var(--spider),auto}
+a,button,select,summary,.btn,.check,.chooseFile,label{cursor:var(--spider-lg),pointer}
+input,textarea{cursor:text}
+.wrap{max-width:1440px;margin:0 auto}
+.display{font-family:var(--font-anton),Impact,sans-serif;font-weight:400;text-transform:uppercase;margin:0}
+.cond{font-family:var(--font-oswald),sans-serif}
+.grad{background:var(--grad-text);-webkit-background-clip:text;background-clip:text;color:transparent}
+.eyebrow{font-size:14px;font-weight:600;letter-spacing:7px;color:var(--lilac)}
+.rule{height:2px;background:linear-gradient(90deg,var(--red),rgba(255,45,79,0))}
+
+/* ===== grit — the raw poster texture on the display type =====
+   Two generated, seamlessly tiling layers (scripts/gen-textures.mjs → npm run textures):
+   dirt.png masks the heading, so pinholes, dust and scratch drags take bites out of the
+   letters; grain.png is painted *inside* them, so the fill reads as screen-printed ink
+   instead of flat colour. The text stays real text — selectable, searchable, no images. */
+.grit,.btn,
+.formCard h3,.cardTitle,.banner .title,.tl .box h4,.tl .num,.domain h4{
+  --grit-dirt:420px;      /* tile size of the mask — bigger = coarser damage */
+  --grit-dirt-pos:0 0;
+  --grit-grain:220px;
+  --grit-grain-pos:0 0;
+  --grit-floor:0;         /* 0 = fully chewed · .6 = only a hint of it */
+  --ink:#eceaee;          /* fill colour for .grit-ink headings */
+  -webkit-mask-image:url(/dirt.png),linear-gradient(rgba(0,0,0,var(--grit-floor)),rgba(0,0,0,var(--grit-floor)));
+          mask-image:url(/dirt.png),linear-gradient(rgba(0,0,0,var(--grit-floor)),rgba(0,0,0,var(--grit-floor)));
+  -webkit-mask-size:var(--grit-dirt),100% 100%;
+          mask-size:var(--grit-dirt),100% 100%;
+  -webkit-mask-position:var(--grit-dirt-pos),0 0;
+          mask-position:var(--grit-dirt-pos),0 0;
+  -webkit-mask-repeat:repeat,no-repeat;
+          mask-repeat:repeat,no-repeat;
+  -webkit-mask-composite:source-over;  /* Safari's spelling of ... */
+          mask-composite:add;          /* ... lift the holes back to --grit-floor */
+  -webkit-mask-clip:no-clip;           /* let the tile run past the border box, so a */
+          mask-clip:no-clip;           /* button's outer glow survives the mask */
+}
+/* the condensed sub-heads only wear a hint — full damage would eat letters that small */
+.cardTitle,.banner .title,.tl .box h4,.tl .num,.domain h4{--grit-floor:.72;--grit-dirt:230px}
+.formCard h3{--grit-floor:.34;--grit-dirt:280px}
+/* start the tile somewhere else so no two headings wear the same dirt */
+.grit.g2{--grit-dirt-pos:37% 61%;--grit-grain-pos:24% 58%}
+.grit.g3{--grit-dirt-pos:72% 18%;--grit-grain-pos:63% 12%;--grit-dirt:340px}
+/* the mottle needs painted ink to sit on, so it rides on the fill itself */
+.grit.grad,.grit .grad{
+  background-image:url(/grain.png),var(--grad-text);
+  background-size:var(--grit-grain) auto,100% 100%;
+  background-position:var(--grit-grain-pos),0 0;
+  background-repeat:repeat,no-repeat;
+}
+/* same, for headings that are a solid colour rather than the gradient */
+.grit-ink,.display.grit-ink{
+  background-image:url(/grain.png),linear-gradient(var(--ink),var(--ink));
+  background-size:var(--grit-grain) auto,100% 100%;
+  background-position:var(--grit-grain-pos),0 0;
+  background-repeat:repeat,no-repeat;
+  -webkit-background-clip:text;background-clip:text;
+  color:transparent;
+}
+
+/* ===== the page's texture, all of it *behind* the content =====
+   Two fixed layers sit on the backdrop (z-index:-1, so every bit of copy and UI paints
+   on top of them, never through them), and each panel carries its own print grain
+   between its background and its text. Dial any of it from :root; 0 turns it off. */
+body::before,body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none}
+body::before{ /* muck on the backdrop: light specks, dark motes, faint drags */
+  background:url(/film.png) 0 0/384px auto repeat;
+  opacity:var(--film);
+}
+body::after{ /* print falloff — the edges of the sheet take less ink */
+  background:radial-gradient(125% 95% at 50% 40%,transparent 40%,rgba(3,1,5,var(--vignette)) 100%);
+}
+/* isolate makes each panel its own stacking context, so the z-index:-1 grain lands
+   above the panel's background but below everything written on it */
+.card,.tl .box,.formCard,.banner,.domain{position:relative;isolation:isolate}
+.card::before,.tl .box::before,.formCard::before,.banner::before,.domain::before{
+  content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;
+  background:url(/grain.png) 0 0/200px auto repeat;
+  opacity:var(--panel-grain);
+}
+/* the hero art is a picture, so its grain goes over the render but under the chips */
+.heroArt::after{
+  content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:url(/grain.png) 0 0/200px auto repeat;
+  opacity:.5;
+}
+.chip{z-index:2}
+
+/* nav */
+.nav{position:sticky;top:0;z-index:50;background:rgba(8,5,10,.86);backdrop-filter:blur(14px);border-bottom:1px solid rgba(255,45,79,.14)}
+.nav .inner{display:flex;align-items:center;justify-content:space-between;gap:32px;padding:16px 40px}
+.brand{display:flex;align-items:center;gap:12px;font-weight:600;font-size:22px;color:#fff}
+.navLinks{display:flex;align-items:center;gap:44px;font-size:16px;font-weight:500}
+.navLinks a{color:#cfc4d2;padding-bottom:6px;border-bottom:2px solid transparent}
+.navLinks a:hover,.navLinks a.active{color:#fff;border-bottom-color:var(--red)}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:14px;border-radius:10px;font-weight:600;font-size:17px;padding:16px 30px;cursor:pointer;border:none}
+/* the buttons wear the same chew as the headings — bites out of the pill and its label,
+   held back to a worn look rather than a broken one */
+.btn{--grit-floor:.45;--grit-dirt:300px}
+.btn.sm{--grit-dirt:210px}
+.btn.grad{background:var(--grad);color:#fff;box-shadow:0 10px 40px rgba(190,50,140,.35);
+  position:relative;isolation:isolate}
+.btn.grad::before{ /* printed ink, above the gradient and below the label */
+  content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;
+  background:url(/grain.png) 0 0/160px auto repeat;opacity:.3;
+}
+.btn.grad:hover{filter:brightness(1.1)}
+.btn.ghost{border:1px solid rgba(255,45,79,.55);background:rgba(255,45,79,.05);color:var(--text)}
+.btn.ghost:hover{border-color:var(--red);background:rgba(255,45,79,.12)}
+.btn.sm{padding:13px 26px;font-size:16px}
+
+/* sections */
+section{padding:96px 40px}
+.secHead{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:56px;align-items:start;margin-bottom:56px}
+.secHead h2{font-size:66px;line-height:1;color:#eceaee}
+.secHead .side{border-left:1px solid rgba(255,45,79,.35);padding-left:34px;padding-top:34px}
+.secHead .side p{margin:0;font-size:19px;line-height:1.7;color:var(--muted2)}
+.secHead .side p+p{margin-top:18px;color:#ff4f6b}
+
+/* hero */
+.hero{padding:70px 40px 90px;background:
+  radial-gradient(1100px 620px at 78% 42%,rgba(120,40,200,.22),transparent 70%),
+  radial-gradient(900px 520px at 20% 20%,rgba(255,45,79,.13),transparent 70%)}
+.hero .grid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:48px;align-items:center}
+.hero h1{font-size:118px;line-height:.88;letter-spacing:-1px}
+.hero .kicker{font-size:15px;font-weight:500;letter-spacing:6px;color:var(--lilac)}
+.heroArt{position:relative;min-height:660px;border-radius:14px;overflow:hidden;
+  background:radial-gradient(600px 460px at 50% 55%,rgba(150,40,190,.30),transparent 72%),linear-gradient(180deg,#0d0710,#140a16 60%,#0a0510)}
+.heroArt img{object-fit:cover}
+.chip{position:absolute;display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:10px;
+  border:1px solid rgba(255,255,255,.14);background:rgba(14,8,17,.72);backdrop-filter:blur(6px);font-size:15px;color:#f0e8f2}
+.chip i{color:var(--red-soft);font-style:normal;font-family:ui-monospace,monospace}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 2.4s ease-in-out infinite}
+.chip .dot{position:absolute;top:-4px;right:-4px}
+@keyframes pulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
+@keyframes scrollDot{0%{transform:translateY(0);opacity:.3}50%{transform:translateY(6px);opacity:1}100%{transform:translateY(0);opacity:.3}}
+.mouse{width:26px;height:42px;border-radius:14px;border:1px solid var(--red);margin:0 auto;display:flex;justify-content:center;padding-top:8px}
+.mouse span{width:2px;height:10px;background:var(--red-soft);animation:scrollDot 1.8s ease-in-out infinite}
+
+/* cards */
+.cards3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:26px}
+.card{padding:30px;border-radius:10px;border:1px solid var(--hair);
+  background:linear-gradient(160deg,rgba(255,45,79,.07),rgba(20,10,24,.5) 45%,rgba(12,7,15,.6));transition:.2s}
+.card:hover{border-color:rgba(255,45,79,.55);transform:translateY(-3px)}
+.card p{margin:0;font-size:16px;line-height:1.7;color:var(--muted)}
+.iconBox{width:56px;height:56px;flex:none;border-radius:8px;border:1px solid rgba(255,45,79,.5);
+  display:flex;align-items:center;justify-content:center;color:var(--red-soft);font-size:22px}
+.cardTitle{font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:23px;letter-spacing:1.5px;color:#f6f1f7}
+
+/* banner */
+.banner{margin-top:30px;padding:28px 38px;border-radius:10px;border:1px solid var(--hair);
+  background:linear-gradient(120deg,rgba(255,45,79,.08),rgba(14,8,17,.6));display:flex;align-items:center;gap:34px}
+.banner p{margin:0;font-size:17px;line-height:1.6;color:#b3a6b7}
+.banner .title{font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:25px;letter-spacing:1.5px;color:#f6f1f7;margin-bottom:10px}
+.ring{width:104px;height:104px;flex:none;border-radius:50%;border:1px solid rgba(255,45,79,.35);display:flex;align-items:center;justify-content:center}
+.ring .inner{width:74px;height:74px;border-radius:50%;border:1px solid rgba(255,45,79,.7);display:flex;align-items:center;justify-content:center;color:var(--red-soft);font-size:26px}
+
+/* timeline */
+.tl{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:26px}
+.tl .col{display:flex;flex-direction:column;align-items:center}
+.tl .num{font-family:var(--font-oswald),sans-serif;font-weight:700;font-size:46px;letter-spacing:2px;color:transparent;margin-bottom:10px}
+.tl .diamondRow{position:relative;width:100%;display:flex;justify-content:center;align-items:center}
+.tl .track{position:absolute;left:0;right:0;top:50%;height:1px;background:linear-gradient(90deg,rgba(255,45,79,.15),rgba(255,45,79,.5),rgba(255,45,79,.15))}
+.tl .diamond{position:relative;width:78px;height:78px;transform:rotate(45deg);border-radius:8px;background:#0b0610;display:flex;align-items:center;justify-content:center;border:1.5px solid}
+.tl .diamond span{transform:rotate(-45deg);font-size:26px}
+.tl .stem{width:1px;height:26px}
+.tl .bead{width:14px;height:14px;border-radius:50%;margin-bottom:-7px;z-index:2}
+.tl .box{width:100%;padding:26px 20px 24px;border-radius:10px;border:1px solid rgba(255,255,255,.09);
+  background:linear-gradient(180deg,rgba(20,10,24,.75),rgba(10,6,13,.65));text-align:center}
+.tl .box h4{font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:19px;letter-spacing:1.2px;margin:0}
+.tl .box .date{margin-top:12px;font-size:15px;font-weight:500;letter-spacing:1.5px;color:#efe7f2}
+.tl .box .hr{width:34px;height:1px;margin:14px auto}
+.tl .box p{margin:0;font-size:15px;line-height:1.65;color:var(--muted)}
+
+/* domains */
+.domain{position:relative;padding:28px;border-radius:10px;overflow:hidden;border:1px solid;transition:.2s}
+.domain:hover{transform:translateY(-4px)}
+.domain .n{font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:20px;margin-bottom:26px}
+.domain .ico{font-size:34px;line-height:1;margin-bottom:20px}
+.domain h4{font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:24px;letter-spacing:1.2px;margin:0 0 12px}
+.domain p{margin:0 0 22px;font-size:16px;line-height:1.7;color:var(--muted);max-width:280px}
+.domain a{display:inline-flex;align-items:center;gap:10px;font-size:16px;font-weight:500}
+
+/* form */
+.applyGrid{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);gap:60px;align-items:start}
+.formCard{padding:38px 40px 40px;border-radius:14px;border:1px solid var(--line);
+  background:linear-gradient(170deg,rgba(26,13,30,.85),rgba(11,6,14,.9));box-shadow:0 30px 90px rgba(0,0,0,.5)}
+.formCard h3{margin:0;font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:38px;letter-spacing:1.5px;
+  background:linear-gradient(95deg,#f4304c,#c92a86 60%,#8b3dff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.groupTitle{font-size:14px;font-weight:600;letter-spacing:2.5px;margin:30px 0 18px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px 26px}
+label{display:block;font-size:14px;color:#cec2d1;margin-bottom:8px}
+.req{color:var(--red)}
+.input,select.input,textarea.input{width:100%;padding:13px 15px;border-radius:8px;border:1px solid rgba(255,255,255,.13);
+  background:rgba(255,255,255,.03);color:var(--text);font-size:15px}
+.input:focus{outline:none;border-color:var(--red)}
+select.input{color:#8b7f8f;background-image:linear-gradient(rgba(255,255,255,.03),rgba(255,255,255,.03))}
+textarea.input{height:106px;resize:none}
+.counter{position:absolute;right:12px;bottom:10px;font-size:12px;color:#7e7382}
+.drop{display:flex;align-items:center;gap:20px;padding:20px 24px;border-radius:8px;border:1px dashed rgba(255,255,255,.16);background:rgba(255,255,255,.02)}
+.chooseFile{padding:12px 22px;border-radius:8px;border:1px solid rgba(255,255,255,.22);background:transparent;color:var(--text);font-size:15px;font-weight:500;cursor:pointer}
+.chooseFile:hover{border-color:var(--red);color:var(--red-soft)}
+.check{width:20px;height:20px;flex:none;margin-top:2px;border-radius:4px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.03);appearance:none;cursor:pointer}
+.check:checked{background:var(--grad);border-color:transparent}
+.submit{width:100%;justify-content:center;font-size:19px;padding:18px}
+
+/* footer quote */
+.quote{padding:60px 40px 70px;text-align:center}
+.quote .row{max-width:1000px;margin:0 auto;display:flex;align-items:center;gap:24px}
+.quote .txt{font-size:22px;font-weight:600;letter-spacing:5px;color:#e9e1eb;white-space:nowrap}
+
+@media (max-width:1180px){
+  .hero .grid,.secHead,.applyGrid{grid-template-columns:1fr}
+  .secHead .side{border-left:none;padding-left:0;padding-top:0}
+  .hero h1{font-size:82px}
+  .secHead h2{font-size:48px}
+  .cards3{grid-template-columns:1fr 1fr}
+  .tl{grid-template-columns:1fr 1fr}
+  .navLinks{display:none}
+  .banner{flex-wrap:wrap}
+}
+@media (max-width:720px){
+  .grit{--grit-dirt:250px;--grit-grain:140px}   /* smaller type needs finer damage */
+  body::before{background-size:280px auto}
+  section{padding:64px 20px}
+  .hero{padding:48px 20px 64px}
+  .hero h1{font-size:58px}
+  .cards3,.tl,.two{grid-template-columns:1fr}
+}
