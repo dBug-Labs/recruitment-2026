@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 
 const NAV = ["Home", "Domains", "Timeline", "Process", "FAQs", "Contact"];
 
@@ -59,8 +59,6 @@ const STEPS = [
 const HREF = { Home: "#top", Domains: "#domains", Timeline: "#timeline", Process: "#why", FAQs: "#why", Contact: "#apply" };
 
 export default function Page() {
-  const [why, setWhy] = useState("");
-
   return (
     <main id="top">
       {/* NAV */}
@@ -308,100 +306,15 @@ export default function Page() {
             </div>
           </div>
 
-          {/* FORM */}
-          <form className="formCard" onSubmit={(e) => e.preventDefault()}>
-            <h3>APPLICATION FORM</h3>
-            <p style={{ margin: "12px 0 26px", fontSize: 16, color: "#b3a6b7" }}>
-              Fill in your details. All fields marked <span className="req">*</span> are mandatory.
+          {/* FORM REMOVED */}
+          <div className="formCard" style={{ padding: "56px 32px", textAlign: "center" }}>
+            <h3 style={{ fontSize: 24, marginBottom: 16 }}>Ready to Apply?</h3>
+            <p style={{ color: "#a99bad", marginBottom: 24, lineHeight: 1.6 }}>
+              The application form has been moved to a dedicated page.<br />
+              Make sure you have your SRM email ready.
             </p>
-
-            <div className="groupTitle" style={{ marginTop: 0, color: "var(--pink)" }}>PERSONAL INFORMATION</div>
-            <div className="two">
-              <div>
-                <label>Full Name <span className="req">*</span></label>
-                <input className="input" placeholder="Enter your full name" required />
-              </div>
-              <div>
-                <label>Email Address <span className="req">*</span></label>
-                <input className="input" type="email" placeholder="Enter your email address" required />
-              </div>
-              <div>
-                <label>Phone Number <span className="req">*</span></label>
-                <div style={{ display: "flex", gap: 12 }}>
-                  <select className="input" style={{ width: 92, color: "var(--text)" }}>
-                    <option>+91</option><option>+1</option><option>+44</option>
-                  </select>
-                  <input className="input" placeholder="Enter your phone number" required />
-                </div>
-              </div>
-              <div>
-                <label>College / University <span className="req">*</span></label>
-                <input className="input" placeholder="Enter your college name" required />
-              </div>
-              <div>
-                <label>Year of Study <span className="req">*</span></label>
-                <select className="input" defaultValue="">
-                  <option value="" disabled>Select your year</option>
-                  <option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option>
-                </select>
-              </div>
-              <div>
-                <label>Branch / Department <span className="req">*</span></label>
-                <select className="input" defaultValue="">
-                  <option value="" disabled>Select your branch</option>
-                  <option>CSE</option><option>IT</option><option>ECE</option><option>Other</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="groupTitle" style={{ color: "var(--lilac)" }}>APPLICATION DETAILS</div>
-            <div className="two">
-              <div>
-                <label>Domain Preference (Select up to 2) <span className="req">*</span></label>
-                <select className="input" defaultValue="">
-                  <option value="" disabled>Select your preference</option>
-                  {DOMAINS.map((d) => <option key={d.num}>{d.title.replace(/\b\w+/g, (w) => w[0] + w.slice(1).toLowerCase())}</option>)}
-                </select>
-              </div>
-              <div>
-                <label>Why do you want to join dBug Labs? <span className="req">*</span></label>
-                <div style={{ position: "relative" }}>
-                  <textarea className="input" placeholder="Tell us what drives you..." maxLength={500}
-                    value={why} onChange={(e) => setWhy(e.target.value)} />
-                  <span className="counter">{why.length}/500</span>
-                </div>
-              </div>
-            </div>
-
-            <label style={{ marginTop: 24 }}>Resume / CV <span className="req">*</span></label>
-            <div className="drop">
-              <span style={{ fontSize: 26, color: "var(--purple-soft)" }}>⇧</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 16, color: "#f2ebf4" }}>Upload your resume</div>
-                <div style={{ fontSize: 14, color: "#9a8d9e", marginTop: 3 }}>PDF (Max. 10MB)</div>
-              </div>
-              <label className="chooseFile" style={{ margin: 0 }}>
-                Choose File
-                <input type="file" accept="application/pdf" hidden />
-              </label>
-            </div>
-
-            <label style={{ marginTop: 24 }}>Portfolio / Work (Optional)</label>
-            <div style={{ position: "relative" }}>
-              <input className="input" style={{ paddingRight: 46 }} placeholder="Paste your portfolio link (Behance, GitHub, Drive, etc.)" />
-              <span style={{ position: "absolute", right: 14, top: 13, color: "var(--purple-soft)", fontSize: 18 }}>🔗</span>
-            </div>
-
-            <div style={{ display: "flex", gap: 14, alignItems: "flex-start", margin: "24px 0 26px" }}>
-              <input type="checkbox" className="check" id="declare" required />
-              <label htmlFor="declare" style={{ margin: 0, fontSize: 15, lineHeight: 1.6, color: "#cec2d1" }}>
-                I hereby declare that the information provided is true and correct to the best of my knowledge. <span className="req">*</span>
-              </label>
-            </div>
-
-            <button type="submit" className="btn grad submit">Submit Application <span>→</span></button>
-            <div style={{ marginTop: 18, textAlign: "center", fontSize: 15, color: "#9a8d9e" }}>🔒 Your information is safe with us and will not be shared.</div>
-          </form>
+            <a href="/apply" className="btn grad">Go to Application Form <span>→</span></a>
+          </div>
         </div>
       </section>
 
