@@ -121,11 +121,8 @@ body::after{ /* print falloff — the edges of the sheet take less ink */
 }
 .chip{z-index:2}
 
-/* nav — genuinely transparent: no background, no border, and crucially no
-   backdrop-filter. A blur here samples the fixed film/vignette layers behind the
-   page, which never move, so it painted a permanent milky band that read as
-   solid. Legibility over the hero art comes from the text shadows instead. */
-.nav{position:sticky;top:0;z-index:50;background:none}
+/* nav */
+.nav{position:sticky;top:0;z-index:50;background:rgba(8,5,10,.8);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
 .nav .inner{display:flex;align-items:center;justify-content:space-between;gap:32px;padding:16px 40px}
 .brand{display:flex;align-items:center;gap:12px;font-weight:600;font-size:22px;color:#fff}
 /* the wordmark wears the same gradient ink and printed grit as the headings */
@@ -504,6 +501,11 @@ textarea.input{height:106px;resize:none}
   .pdfFrame{height:460px}
 }
 @media (max-width:640px){
+  .nav .inner{padding:10px 16px;gap:12px}
+  .brandMark{font-size:18px}
+  .brand img{width:28px;height:28px}
+  .navLogin{padding:7px 12px;font-size:14px}
+  .navActions .btn{padding:9px 18px;font-size:14px}
   .portalNav{padding:10px 16px}
   .portalNav .inner{gap:12px}
   .portalNavRight{width:100%;gap:12px;justify-content:space-between}
