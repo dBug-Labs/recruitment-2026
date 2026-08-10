@@ -1,9 +1,14 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
+import Script from "next/script";
 import { useState, useRef, useCallback } from "react";
+import SiteNav from "@/app/_components/SiteNav";
 import { DEPARTMENTS, BRANCHES, YEARS, TECH_DOMAINS, CORP_DOMAINS } from "@/lib/schemas";
+
+// Cloudflare injects a hidden `cf-turnstile-response` input into the form,
+// which the FormData below picks up automatically.
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 export default function ApplyPage() {
   const [formState, setFormState] = useState("idle"); // idle | submitting | success | error
@@ -148,9 +153,9 @@ export default function ApplyPage() {
           </p>
           <div style={{ background: "rgba(176,107,255,.1)", border: "1px solid rgba(176,107,255,.3)",
             borderRadius: 10, padding: "14px 24px", display: "inline-block", marginBottom: 24 }}>
-            <div style={{ fontSize: 12, color: "#9a8d9e", marginBottom: 4, letterSpacing: 1 }}>APPLICATION ID</div>
-            <div style={{ fontFamily: "monospace", fontSize: 15, color: "#b06bff", letterSpacing: 2 }}>
-              {successData?.applicationId}
+            <div style={{ fontSize: 12, color: "#9a8d9e", marginBottom: 4, letterSpacing: 1 }}>YOUR APPLICANT ID</div>
+            <div style={{ fontFamily: "monospace", fontSize: 22, color: "#b06bff", letterSpacing: 3 }}>
+              {successData?.applicantId}
             </div>
           </div>
           <div>
@@ -163,17 +168,7 @@ export default function ApplyPage() {
 
   return (
     <main>
-      <nav className="nav">
-        <div className="wrap inner">
-          <Link href="/" className="brand" style={{ color: "var(--text)" }}>
-            <Image src="/logo.png" alt="dBug Labs" width={36} height={36} />
-            <span>dBug Labs</span>
-          </Link>
-          <div className="navLinks">
-            <Link href="/login">Login</Link>
-          </div>
-        </div>
-      </nav>
+      <SiteNav />
 
       <section style={{ paddingTop: 120, paddingBottom: 80 }}>
         <div className="wrap" style={{ maxWidth: 860 }}>
@@ -183,7 +178,7 @@ export default function ApplyPage() {
             <p style={{ color: "#a99bad", fontSize: 16, marginTop: 12 }}>Join a community of dreamers, builders, and problem solvers.</p>
           </div>
 
-          <form className="formCard" ref={formRef} onSubmit={handleSubmit} style={{ padding: "40px 48px" }}>
+          <form className="formCard applyForm" ref={formRef} onSubmit={handleSubmit}>
             <input name="_hp" type="text" style={{ display: "none" }} tabIndex={-1} autoComplete="off" aria-hidden="true" />
             
             {serverErrors._general && (
@@ -207,10 +202,10 @@ export default function ApplyPage() {
               </div>
             </div>
 
-            <div style={{ marginBottom: 32, padding: 24, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }}>
+            <div className="otpBox">
               <label>SRM Email <span className="req">*</span></label>
-              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                <div style={{ flex: 1 }}>
+              <div className="otpRow">
+                <div className="otpField">
                   <input 
                     className="input" 
                     type="email" 
@@ -240,7 +235,7 @@ export default function ApplyPage() {
               {(otpState === "sent" || otpState === "verifying") && (
                 <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px dashed rgba(255,255,255,0.1)" }}>
                   <label>Enter 6-digit OTP</label>
-                  <div style={{ display: "flex", gap: 12 }}>
+                  <div className="otpRow">
                     <input 
                       className="input" 
                       placeholder="• • • • • •" 
@@ -273,20 +268,26 @@ export default function ApplyPage() {
                 </select>
                 {serverErrors.year && <span style={{ fontSize: 12, color: "var(--pink)", marginTop: 4, display: "block" }}>{serverErrors.year}</span>}
               </div>
+              {/* Free text, not a dropdown — the lists below are only suggestions,
+                  so anything the university actually calls a course still fits. */}
               <div>
                 <label>Branch <span className="req">*</span></label>
-                <select className="input" name="branch" defaultValue="" required style={serverErrors.branch ? { borderColor: "var(--pink)" } : {}}>
-                  <option value="" disabled>Select Branch</option>
-                  {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
+                <input className="input" name="branch" list="branch-options" required
+                  placeholder="B.Tech" autoComplete="off"
+                  style={serverErrors.branch ? { borderColor: "var(--pink)" } : {}} />
+                <datalist id="branch-options">
+                  {BRANCHES.map(b => <option key={b} value={b} />)}
+                </datalist>
                 {serverErrors.branch && <span style={{ fontSize: 12, color: "var(--pink)", marginTop: 4, display: "block" }}>{serverErrors.branch}</span>}
               </div>
               <div>
                 <label>Department <span className="req">*</span></label>
-                <select className="input" name="department" defaultValue="" required style={serverErrors.department ? { borderColor: "var(--pink)" } : {}}>
-                  <option value="" disabled>Select Department</option>
-                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
+                <input className="input" name="department" list="department-options" required
+                  placeholder="CSE — Cloud Computing" autoComplete="off"
+                  style={serverErrors.department ? { borderColor: "var(--pink)" } : {}} />
+                <datalist id="department-options">
+                  {DEPARTMENTS.map(d => <option key={d} value={d} />)}
+                </datalist>
                 {serverErrors.department && <span style={{ fontSize: 12, color: "var(--pink)", marginTop: 4, display: "block" }}>{serverErrors.department}</span>}
               </div>
             </div>
@@ -384,6 +385,16 @@ export default function ApplyPage() {
             <div style={{ fontSize: 13, color: "#8d8091", marginTop: 8, marginBottom: 32 }}>
               Resume is mandatory for 2nd Year technical applicants. Optional for others.
             </div>
+
+            {TURNSTILE_SITE_KEY && (
+              <div style={{ marginBottom: 20 }}>
+                <Script
+                  src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+                  strategy="lazyOnload"
+                />
+                <div className="cf-turnstile" data-sitekey={TURNSTILE_SITE_KEY} data-theme="dark" />
+              </div>
+            )}
 
             {formState === "submitting" && (
               <div style={{ marginBottom: 18 }}>

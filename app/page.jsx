@@ -1,9 +1,19 @@
-"use client";
-
+// No interactivity left on this page since the form moved to /apply, so it
+// stays a Server Component and ships no JavaScript of its own.
 import Image from "next/image";
-import { useState, useRef, useCallback } from "react";
+import Link from "next/link";
+import SiteNav from "@/app/_components/SiteNav";
+import DomainGrid from "@/app/_components/DomainGrid";
 
-const NAV = ["Home", "Domains", "Timeline", "Process", "FAQs", "Contact"];
+// Only anchors that actually exist on the page. SiteNav highlights whichever of
+// these is on screen, so the active link is no longer pinned to "Home".
+const SECTIONS = [
+  { id: "top",      label: "Home"     },
+  { id: "why",      label: "Why Us"   },
+  { id: "domains",  label: "Domains"  },
+  { id: "timeline", label: "Timeline" },
+  { id: "apply",    label: "Apply"    },
+];
 
 const CHIPS = [
   { label: "< >", icon: "", left: "27%", top: "16%" },
@@ -24,58 +34,34 @@ const WHY = [
   { icon: "⚡", title: "UNLEASH POTENTIAL", body: "Step out of your comfort zone and discover a version of you that can achieve extraordinary things." },
 ];
 
+/* The five stages of recruitment, with the dates attached. The wording here,
+   in STEPS below and on the dashboard all describe the same pipeline:
+   application → task → shortlist → interview → result. */
 const TIMELINE = [
-  { num: "01", icon: "☰", title: "APPLICATIONS OPEN", date: "25 MAY 2026", body: "The first step towards an incredible journey begins here.", color: "#ff2d4f", dot: "#ff2d4f", glow: "rgba(255,45,79,.45)" },
-  { num: "02", icon: "☑", title: "APPLICATIONS CLOSE", date: "08 JUNE 2026", body: "Make sure to submit your application before it's too late.", color: "#b06bff", dot: "#ffffff", glow: "rgba(176,107,255,.45)" },
-  { num: "03", icon: "☺", title: "SHORTLISTING", date: "10 – 12 JUNE 2026", body: "Our team will review applications and shortlist the brightest minds.", color: "#ff2d4f", dot: "#ff2d4f", glow: "rgba(255,45,79,.45)" },
-  { num: "04", icon: "▭", title: "INTERVIEWS", date: "14 – 20 JUNE 2026", body: "Showcase your skills, passion and potential.", color: "#b06bff", dot: "#ffffff", glow: "rgba(176,107,255,.45)" },
-  { num: "05", icon: "☆", title: "RESULTS OUT", date: "22 JUNE 2026", body: "The next chapter begins. Welcome to dBug Labs.", color: "#ff2d4f", dot: "#ffffff", glow: "rgba(255,45,79,.45)" },
+  { num: "01", icon: "☰", title: "APPLICATIONS OPEN", date: "12 AUG 2026", body: "Fill the form, verify your SRM email and pick up to two domains.", color: "#ff2d4f", dot: "#ff2d4f", glow: "rgba(255,45,79,.45)" },
+  { num: "02", icon: "☑", title: "APPLICATIONS CLOSE", date: "28 AUG 2026", body: "Last call, 11:59 PM. Nothing is accepted after this — and applying earlier gives you more runway.", color: "#b06bff", dot: "#ffffff", glow: "rgba(176,107,255,.45)" },
+  { num: "03", icon: "⚒", title: "TASK ROUND", date: "5 DAYS FROM YOUR APPLY DATE", body: "Your brief appears the moment you apply, and the clock is yours alone. Apply on the 28th? Submit by 2 Sept.", color: "#ff2d4f", dot: "#ff2d4f", glow: "rgba(255,45,79,.45)" },
+  { num: "04", icon: "▭", title: "SHORTLIST & INTERVIEWS", date: "03 – 10 SEPT 2026", body: "We read every submission. Shortlisted candidates get an interview slot by email.", color: "#b06bff", dot: "#ffffff", glow: "rgba(176,107,255,.45)" },
+  { num: "05", icon: "☆", title: "RESULTS OUT", date: "12 SEPT 2026", body: "Final calls go out. The next chapter begins — welcome to dBug Labs.", color: "#ff2d4f", dot: "#ffffff", glow: "rgba(255,45,79,.45)" },
 ];
 
-const DOMAINS = [
-  { num: "01", icon: "‹›", title: "WEB DEVELOPMENT", body: "Building responsive, scalable and beautiful web experiences.", color: "#ff3a58", border: "rgba(255,45,79,.35)", wash: "rgba(255,45,79,.10)" },
-  { num: "02", icon: "◎", title: "AI / ML", body: "Teaching machines to learn, adapt and solve real world problems.", color: "#b06bff", border: "rgba(139,61,255,.32)", wash: "rgba(139,61,255,.10)" },
-  { num: "03", icon: "▯", title: "APP DEVELOPMENT", body: "Crafting intuitive and powerful mobile applications.", color: "#ff3a7a", border: "rgba(255,58,122,.32)", wash: "rgba(255,58,122,.09)" },
-  { num: "04", icon: "✒", title: "CREATIVE DESIGN", body: "Designing visuals that communicate, engage and leave a mark.", color: "#b06bff", border: "rgba(139,61,255,.3)", wash: "rgba(139,61,255,.09)" },
-  { num: "05", icon: "◠", title: "PUBLIC RELATIONS", body: "Amplifying our voice and building meaningful connections.", color: "#ff3a58", border: "rgba(255,45,79,.4)", wash: "rgba(255,45,79,.14)" },
-  { num: "06", icon: "≋", title: "CORPORATE & EVENTS", body: "Planning, organizing and managing events that create memories.", color: "#c07adf", border: "rgba(139,61,255,.3)", wash: "rgba(139,61,255,.08)" },
-];
+/* Domain copy lives in app/_components/domains.js — DomainGrid renders it. */
 
+/* Matches what the form on /apply actually asks for. */
 const PREP = [
-  { icon: "▤", title: "Resume / CV", sub: "PDF or Link" },
-  { icon: "▭", title: "College ID", sub: "Clear Copy" },
-  { icon: "▱", title: "Portfolio (Optional)", sub: "Link or File" },
-  { icon: "♡", title: "Why dBug Labs?", sub: "Your Answer" },
+  { icon: "✉", title: "Your SRM email", sub: "We send an OTP to verify it" },
+  { icon: "▤", title: "Registration number", sub: "The full RA2… number" },
+  { icon: "▱", title: "Resume (PDF)", sub: "Required for 2nd-year tech" },
+  { icon: "♡", title: "Two short answers", sub: "200 words each, no essays" },
 ];
 
-const STEPS = [
-  { n: "1", icon: "▤", title: "Apply Online", body: "Fill out the application form." },
-  { n: "2", icon: "☺", title: "Screening", body: "Shortlisted applications move forward." },
-  { n: "3", icon: "▭", title: "Interviews", body: "Showcase your skills and personality." },
-  { n: "4", icon: "⚬", title: "Final Round", body: "Meet the core team and align our vision." },
-  { n: "5", icon: "☆", title: "Welcome Aboard", body: "Begin your journey with dBug Labs!" },
-];
-
-const HREF = { Home: "#top", Domains: "#domains", Timeline: "#timeline", Process: "#why", FAQs: "#why", Contact: "#apply" };
+/* The five stages already have their own section above (TIMELINE), so the apply
+   block deliberately does not repeat them. */
 
 export default function Page() {
   return (
     <main id="top">
-      {/* NAV */}
-      <nav className="nav">
-        <div className="wrap inner">
-          <div className="brand">
-            <Image src="/logo.png" alt="dBug Labs" width={36} height={36} />
-            <span>dBug Labs</span>
-          </div>
-          <div className="navLinks">
-            {NAV.map((n, i) => (
-              <a key={n} href={HREF[n]} className={i === 0 ? "active" : ""}>{n}</a>
-            ))}
-          </div>
-          <a href="#apply" className="btn grad sm">Apply Now <span>→</span></a>
-        </div>
-      </nav>
+      <SiteNav sections={SECTIONS} />
 
       {/* HERO */}
       <header className="hero">
@@ -96,7 +82,7 @@ export default function Page() {
               Recruitments <b style={{ color: "#ff3a58" }}>2026</b> are now open.
             </p>
             <div style={{ display: "flex", gap: 22, marginTop: 38, flexWrap: "wrap" }}>
-              <a href="#apply" className="btn grad">Apply Now <span>→</span></a>
+              <Link href="/apply" className="btn grad">Apply Now <span>→</span></Link>
               <a href="#domains" className="btn ghost">Explore Domains <span>→</span></a>
             </div>
           </div>
@@ -157,7 +143,7 @@ export default function Page() {
               <div className="title">BE A PART OF SOMETHING <span style={{ color: "#ff3a58" }}>EXTRAORDINARY.</span></div>
               <p>This is your moment. This is your Brand New Day.<br />We can&apos;t wait to see what you&apos;ll build with us.</p>
             </div>
-            <a href="#apply" className="btn grad">Apply Now <span>→</span></a>
+            <Link href="/apply" className="btn grad">Apply Now <span>→</span></Link>
           </div>
         </div>
       </section>
@@ -204,7 +190,7 @@ export default function Page() {
               <div className="title">READY TO BEGIN YOUR JOURNEY?</div>
               <p>Opportunities don&apos;t happen. You create them.<br /><span style={{ color: "#ff4f6b" }}>Take the first step today.</span></p>
             </div>
-            <a href="#apply" className="btn grad">Apply Now <span>→</span></a>
+            <Link href="/apply" className="btn grad">Apply Now <span>→</span></Link>
           </div>
         </div>
       </section>
@@ -218,22 +204,12 @@ export default function Page() {
               <h2 className="display grit grit-ink g2" style={{ marginTop: 10 }}>Different domains.<br /><span className="grad">One mission.</span></h2>
             </div>
             <div className="side">
-              <p>From coding the future to designing experiences, from learning machines to managing moments — every domain plays a vital role in building impact.</p>
-              <p>Find your path. Build your legacy.</p>
+              <p>Ten domains, five technical and five corporate. Every one of them ships something real — code, campaigns, cuts, contracts — and every one of them needs people who care about the details.</p>
+              <p>Pick up to two on the form. Find your path, build your legacy.</p>
             </div>
           </div>
 
-          <div className="cards3">
-            {DOMAINS.map((d) => (
-              <div className="domain" key={d.num} style={{ borderColor: d.border, background: `linear-gradient(150deg,${d.wash},rgba(11,6,14,.85) 60%)` }}>
-                <div className="n" style={{ color: d.color }}>{d.num}</div>
-                <div className="ico" style={{ color: d.color }}>{d.icon}</div>
-                <h4 style={{ color: d.color }}>{d.title}</h4>
-                <p>{d.body}</p>
-                <a href="#apply" style={{ color: d.color }}>Explore <span>→</span></a>
-              </div>
-            ))}
-          </div>
+          <DomainGrid />
 
           <div className="banner" style={{ marginTop: 34, background: "rgba(14,8,17,.55)" }}>
             <div style={{ width: 86, height: 86, flex: "none", borderRadius: "50%", border: "1px solid rgba(255,45,79,.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -243,10 +219,10 @@ export default function Page() {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: 3, color: "#ff3a58", marginBottom: 12 }}>NOT SURE WHERE YOU FIT?</div>
-              <p>Take our quick domain selector quiz and we&apos;ll suggest the best domains for you!</p>
+              <p>Answer eight quick questions, then talk it through with our AI advisor. It reads your answers, argues the trade-offs with you, and points you at the two domains worth picking.</p>
             </div>
             <div style={{ width: 1, height: 64, background: "var(--line)" }} />
-            <a href="#apply" className="btn ghost">Take the Quiz <span>→</span></a>
+            <Link href="/fit" className="btn ghost">Find your fit <span>→</span></Link>
           </div>
         </div>
       </section>
@@ -256,15 +232,21 @@ export default function Page() {
         <div className="wrap applyGrid">
           <div>
             <div className="eyebrow">RECRUITMENTS &apos;26</div>
-            <h2 className="display grit grit-ink g3" style={{ fontSize: 56, lineHeight: 1.05, "--ink": "#dcd6de", marginTop: 12 }}>Your brand new day</h2>
-            <h2 className="display grad grit" style={{ fontSize: 104, lineHeight: 1, marginTop: 6 }}>Starts here.</h2>
+            <h2 className="display grit grit-ink g3 applyLede" style={{ "--ink": "#dcd6de" }}>Your brand new day</h2>
+            <h2 className="display grad grit applyShout">Starts here.</h2>
             <div style={{ display: "flex", alignItems: "center", gap: 16, margin: "26px 0 32px" }}>
               <div style={{ flex: 1, height: 1, background: "linear-gradient(90deg,#ff2d4f,rgba(255,45,79,.1))" }} />
               <span style={{ color: "var(--red)", fontSize: 20 }}>🕷</span>
               <div style={{ flex: 1, height: 1, background: "linear-gradient(270deg,#8b3dff,rgba(139,61,255,.1))" }} />
             </div>
             <p style={{ margin: 0, fontSize: 19, lineHeight: 1.7, color: "var(--muted2)" }}>
-              Take the first step toward an unforgettable journey.<br />Fill out the application form and let&apos;s build the future together.
+              One form to start: <strong style={{ color: "#f2ebf4" }}>apply → build the task → get shortlisted → interview → done</strong>.
+              No hidden rounds, and every stage shows up on your own dashboard.
+            </p>
+            <p style={{ margin: "18px 0 0", fontSize: 16, lineHeight: 1.7, color: "#9a8d9e" }}>
+              Your task brief arrives the moment you apply, and you get{" "}
+              <strong style={{ color: "#ff8fa3" }}>exactly 5 days</strong> to submit it — counted from your own
+              application, not a shared deadline. Applying early buys you nothing but calm.
             </p>
 
             <div style={{ marginTop: 34, padding: "26px 28px", borderRadius: 10, border: "1px solid rgba(255,45,79,.3)", background: "linear-gradient(150deg,rgba(255,45,79,.07),rgba(12,7,15,.6))" }}>
@@ -275,7 +257,7 @@ export default function Page() {
                   <p style={{ margin: 0, fontSize: 16, color: "#b3a6b7" }}>Keep the following ready for a smooth application experience.</p>
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 18 }}>
+              <div className="prepGrid">
                 {PREP.map((p) => (
                   <div key={p.title} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                     <span style={{ color: "var(--red-soft)", fontSize: 20, lineHeight: 1.2 }}>{p.icon}</span>
@@ -288,32 +270,30 @@ export default function Page() {
               </div>
             </div>
 
-            <div style={{ marginTop: 44 }}>
-              <div className="eyebrow" style={{ letterSpacing: 6, marginBottom: 28 }}>THE JOURNEY AHEAD</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 14 }}>
-                {STEPS.map((s) => (
-                  <div key={s.n}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ width: 58, height: 58, flex: "none", borderRadius: "50%", border: "1px solid rgba(255,45,79,.45)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--red-soft)", fontSize: 22 }}>{s.icon}</div>
-                      <span style={{ color: "rgba(255,45,79,.6)", fontSize: 15 }}>»</span>
-                    </div>
-                    <div style={{ fontSize: 14, color: "#8d8091", margin: "10px 0 8px" }}>{s.n}</div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: "#f2ebf4", marginBottom: 8 }}>{s.title}</div>
-                    <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "#9a8d9e" }}>{s.body}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
 
-          {/* FORM REMOVED */}
-          <div className="formCard" style={{ padding: "56px 32px", textAlign: "center" }}>
-            <h3 style={{ fontSize: 24, marginBottom: 16 }}>Ready to Apply?</h3>
-            <p style={{ color: "#a99bad", marginBottom: 24, lineHeight: 1.6 }}>
-              The application form has been moved to a dedicated page.<br />
-              Make sure you have your SRM email ready.
+          {/* the form itself lives at /apply — this is the entry point to it */}
+          <div className="formCard ctaCard">
+            <div className="eyebrow" style={{ letterSpacing: 4, fontSize: 12 }}>STEP ONE</div>
+            <h3 style={{ fontSize: 26, margin: "14px 0 14px" }}>Ready to apply?</h3>
+            <p style={{ color: "#a99bad", margin: "0 0 26px", lineHeight: 1.7, fontSize: 15.5 }}>
+              The form takes about ten minutes. You&apos;ll verify your SRM email with an OTP,
+              pick up to two domains, and answer two 200-word questions.
             </p>
-            <a href="/apply" className="btn grad">Go to Application Form <span>→</span></a>
+
+            <ul className="ctaList">
+              <li><span>✓</span> Applications close <strong>28 August 2026</strong>, 11:59 PM</li>
+              <li><span>✓</span> Your task is due <strong>5 days after you apply</strong></li>
+              <li><span>✓</span> One application per SRM email</li>
+            </ul>
+
+            <Link href="/apply" className="btn grad" style={{ width: "100%", justifyContent: "center" }}>
+              Go to application form <span>→</span>
+            </Link>
+            <div style={{ marginTop: 16, fontSize: 14, color: "#8d8091" }}>
+              Already applied?{" "}
+              <Link href="/login" style={{ color: "var(--purple-soft)" }}>Track your status →</Link>
+            </div>
           </div>
         </div>
       </section>

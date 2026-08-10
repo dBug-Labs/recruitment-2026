@@ -13,28 +13,9 @@
  */
 
 import { createRequire } from 'module'
-import { readFileSync }  from 'fs'
-import { resolve, dirname } from 'path'
-import { fileURLToPath } from 'url'
+import { loadEnvLocal }  from './_env.mjs'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-
-// Load .env.local manually (no dotenv dependency needed)
-try {
-  const envPath = resolve(__dirname, '../.env.local')
-  const lines   = readFileSync(envPath, 'utf-8').split('\n')
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eqIdx = trimmed.indexOf('=')
-    if (eqIdx === -1) continue
-    const key = trimmed.slice(0, eqIdx).trim()
-    const val = trimmed.slice(eqIdx + 1).trim()
-    if (key && !(key in process.env)) process.env[key] = val
-  }
-} catch {
-  // .env.local may not exist in CI; env vars should already be set
-}
+loadEnvLocal()
 
 const require = createRequire(import.meta.url)
 const { MongoClient, GridFSBucket } = require('mongodb')
@@ -56,15 +37,43 @@ async function init() {
   console.log('📋  Setting up collection: applications')
   await db.createCollection('applications').catch(() => {}) // already exists → fine
   const applications = db.collection('applications')
+  // The old build indexed `email`, a field applications never had — every
+  // document therefore indexed as null and the second insert collided.
+  await applications.dropIndex('unique_email_per_drive').catch(() => {})
+  // an earlier build shipped this as a (broken) sparse index — rebuild it
+  await applications.dropIndex('unique_applicant_id').catch(() => {})
   await applications.createIndexes([
-    // Prevent duplicate applications per email per drive
-    { key: { driveId: 1, email: 1 }, unique: true, name: 'unique_email_per_drive' },
-    { key: { status: 1 },            name: 'status' },
-    { key: { domains: 1 },           name: 'domains' },
-    { key: { createdAt: -1 },        name: 'created_at_desc' },
-    { key: { driveId: 1 },           name: 'drive_id' },
+    // One application per SRM email, and per registration number, per drive
+    { key: { driveId: 1, srmEmail: 1 },           unique: true, name: 'unique_srm_email_per_drive' },
+    { key: { driveId: 1, registrationNumber: 1 }, unique: true, name: 'unique_reg_no_per_drive' },
+    // BND-### applicant ids, unique per drive. This must be a *partial* index,
+    // not a sparse one: a compound sparse index only skips a document when every
+    // indexed field is missing, so rows predating applicantId would all collide
+    // on { driveId, null }.
+    {
+      key: { driveId: 1, applicantId: 1 },
+      unique: true,
+      name: 'unique_applicant_id',
+      partialFilterExpression: { applicantId: { $type: 'string' } },
+    },
+    { key: { status: 1 },     name: 'status' },
+    { key: { domains: 1 },    name: 'domains' },
+    { key: { domainKeys: 1 }, name: 'domain_keys' },
+    { key: { createdAt: -1 }, name: 'created_at_desc' },
+    { key: { driveId: 1 },    name: 'drive_id' },
   ])
   console.log('   ✓ Indexes created for applications\n')
+
+  // ─── otps ─────────────────────────────────────────────────────────────────
+  console.log('🔑  Setting up collection: otps')
+  await db.createCollection('otps').catch(() => {})
+  const otps = db.collection('otps')
+  await otps.createIndexes([
+    { key: { email: 1 }, unique: true, name: 'unique_email' },
+    // Mongo sweeps expired codes on its own — no cleanup job needed
+    { key: { expiresAt: 1 }, expireAfterSeconds: 0, name: 'ttl_expires_at' },
+  ])
+  console.log('   ✓ Indexes created for otps\n')
 
   // ─── users ────────────────────────────────────────────────────────────────
   console.log('👤  Setting up collection: users')
@@ -110,6 +119,7 @@ async function init() {
     { key: { applicationId: 1 }, name: 'application_id' },
     { key: { slotAt: 1 },        name: 'slot_at' },
     { key: { status: 1 },        name: 'status' },
+    { key: { driveId: 1 },       name: 'drive_id' },
   ])
   console.log('   ✓ Indexes created for interviews\n')
 
@@ -126,15 +136,19 @@ async function init() {
   console.log('   ✓ Indexes created for auditLog\n')
 
   // ─── GridFS bucket (resumes) ──────────────────────────────────────────────
-  console.log('📄  Setting up GridFS bucket: resumes')
+  console.log('📄  Setting up GridFS buckets: resumes, taskDocs')
   // Instantiating the bucket creates the underlying collections if they don't exist
-  const bucket = new GridFSBucket(db, { bucketName: 'resumes' })
-  // Create indexes on the chunks collection explicitly
+  new GridFSBucket(db, { bucketName: 'resumes' })
+  new GridFSBucket(db, { bucketName: 'taskDocs' })
   await db.collection('resumes.files').createIndexes([
     { key: { 'metadata.applicationId': 1 }, name: 'application_id' },
     { key: { uploadDate: -1 },              name: 'upload_date_desc' },
   ])
-  console.log('   ✓ GridFS bucket and indexes ready\n')
+  await db.collection('taskDocs.files').createIndexes([
+    { key: { 'metadata.taskId': 1 }, name: 'task_id' },
+    { key: { uploadDate: -1 },       name: 'upload_date_desc' },
+  ])
+  console.log('   ✓ GridFS buckets and indexes ready\n')
 
   // ─── Summary ──────────────────────────────────────────────────────────────
   const colNames = (await db.listCollections().toArray()).map((c) => c.name).sort()

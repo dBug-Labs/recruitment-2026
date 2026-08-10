@@ -9,7 +9,7 @@
 
 import { auth } from "@/lib/auth";
 import { getCollection } from "@/lib/db";
-import { requireAuth, ROLES, withErrorHandling } from "@/lib/rbac";
+import { requireStaff, hasDomainAccess, actorRef, withErrorHandling } from "@/lib/rbac";
 import { TaskSchema } from "@/lib/schemas";
 import { logAudit } from "@/lib/audit";
 import { uploadTaskDocument, validatePdfBuffer } from "@/lib/storage";
@@ -17,11 +17,7 @@ import { ObjectId } from "mongodb";
 
 export const POST = withErrorHandling(async function handler(request) {
   const session = await auth();
-  const user = requireAuth(session);
-  
-  if (user.role !== ROLES.ADMIN && user.role !== ROLES.DOMAIN_LEAD) {
-    return jsonError("Forbidden", 403);
-  }
+  const user = requireStaff(session);
 
   let formData;
   try {
@@ -58,16 +54,14 @@ export const POST = withErrorHandling(async function handler(request) {
       const field = issue.path[0] ?? 'general'
       if (!errors[field]) errors[field] = issue.message
     }
-    return jsonError("Invalid task data", 400, { fields: errors });
+    return jsonError("Invalid task data", 422, { fields: errors });
   }
 
   const data = parsed.data;
 
   // Verify domain authorization
-  if (user.role === ROLES.DOMAIN_LEAD) {
-    if (!user.domains.includes(data.domain)) {
-      return jsonError("Forbidden: Cannot create tasks for unassigned domains", 403);
-    }
+  if (!hasDomainAccess(user, [data.domain])) {
+    return jsonError("Forbidden: Cannot create tasks for unassigned domains", 403);
   }
 
   const documentFile = formData.get('document');
@@ -93,8 +87,10 @@ export const POST = withErrorHandling(async function handler(request) {
   const doc = {
     _id: tempId,
     ...data,
+    dueAt: new Date(data.dueAt),
     documentFileId: upload.fileId,
-    createdBy: new ObjectId(user.id),
+    // the env-password admin has no users row, so this is a plain string ref
+    createdBy: actorRef(user),
     createdAt: now,
     updatedAt: now,
   };
@@ -105,9 +101,9 @@ export const POST = withErrorHandling(async function handler(request) {
     actorId: user.id,
     actorEmail: user.email,
     action: "CREATE_TASK",
-    target: "TASK",
+    target: { collection: "tasks", id: result.insertedId.toString() },
     before: null,
-    after: { taskId: result.insertedId.toString(), title: data.title },
+    after: { taskId: result.insertedId.toString(), title: data.title, domain: data.domain },
     ip: request.headers.get("x-forwarded-for") || "unknown"
   });
 

@@ -49,7 +49,7 @@ input,textarea{cursor:text}
    dirt.png masks the heading, so pinholes, dust and scratch drags take bites out of the
    letters; grain.png is painted *inside* them, so the fill reads as screen-printed ink
    instead of flat colour. The text stays real text — selectable, searchable, no images. */
-.grit,.btn,
+.grit,.btn,.brandMark,
 .formCard h3,.cardTitle,.banner .title,.tl .box h4,.tl .num,.domain h4{
   --grit-dirt:420px;      /* tile size of the mask — bigger = coarser damage */
   --grit-dirt-pos:0 0;
@@ -121,13 +121,39 @@ body::after{ /* print falloff — the edges of the sheet take less ink */
 }
 .chip{z-index:2}
 
-/* nav */
-.nav{position:sticky;top:0;z-index:50;background:rgba(8,5,10,.86);backdrop-filter:blur(14px);border-bottom:1px solid rgba(255,45,79,.14)}
+/* nav — genuinely transparent: no background, no border, and crucially no
+   backdrop-filter. A blur here samples the fixed film/vignette layers behind the
+   page, which never move, so it painted a permanent milky band that read as
+   solid. Legibility over the hero art comes from the text shadows instead. */
+.nav{position:sticky;top:0;z-index:50;background:none}
 .nav .inner{display:flex;align-items:center;justify-content:space-between;gap:32px;padding:16px 40px}
 .brand{display:flex;align-items:center;gap:12px;font-weight:600;font-size:22px;color:#fff}
-.navLinks{display:flex;align-items:center;gap:44px;font-size:16px;font-weight:500}
-.navLinks a{color:#cfc4d2;padding-bottom:6px;border-bottom:2px solid transparent}
+/* the wordmark wears the same gradient ink and printed grit as the headings */
+.brandMark{font-family:var(--font-oswald),sans-serif;font-weight:700;font-size:23px;
+  letter-spacing:.6px;--grit-floor:.78;--grit-dirt:190px;--grit-grain:120px}
+.navLinks{display:flex;align-items:center;gap:38px;font-size:16px;font-weight:500}
+.navLinks a{color:#e2d8e5;padding-bottom:6px;border-bottom:2px solid transparent;
+  text-shadow:0 2px 14px rgba(0,0,0,.85),0 0 26px rgba(0,0,0,.6)}
 .navLinks a:hover,.navLinks a.active{color:#fff;border-bottom-color:var(--red)}
+.navActions{display:flex;align-items:center;gap:14px;flex:none}
+.navLogin{font-size:15.5px;font-weight:500;color:#e2d8e5;padding:9px 16px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.24);white-space:nowrap;
+  text-shadow:0 2px 14px rgba(0,0,0,.85);background:rgba(8,5,10,.35)}
+.navLogin:hover{color:#fff;border-color:var(--red);background:rgba(255,45,79,.14)}
+
+/* branded scrollbars — the default chrome looked out of place inside the
+   domain popups and the chat log */
+.modalCard,.chatLog,.pdfFrame,.tableWrap{scrollbar-width:thin;scrollbar-color:rgba(255,45,79,.45) transparent}
+.modalCard::-webkit-scrollbar,.chatLog::-webkit-scrollbar,
+.tableWrap::-webkit-scrollbar{width:8px;height:8px}
+.modalCard::-webkit-scrollbar-track,.chatLog::-webkit-scrollbar-track,
+.tableWrap::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:8px}
+.modalCard::-webkit-scrollbar-thumb,.chatLog::-webkit-scrollbar-thumb,
+.tableWrap::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--red),var(--purple));
+  border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+.modalCard::-webkit-scrollbar-thumb:hover,.chatLog::-webkit-scrollbar-thumb:hover,
+.tableWrap::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--red-soft),var(--purple-soft));
+  background-clip:padding-box}
 
 /* buttons */
 .btn{display:inline-flex;align-items:center;gap:14px;border-radius:10px;font-weight:600;font-size:17px;padding:16px 30px;cursor:pointer;border:none}
@@ -210,13 +236,106 @@ section{padding:96px 40px}
 .tl .box p{margin:0;font-size:15px;line-height:1.65;color:var(--muted)}
 
 /* domains */
-.domain{position:relative;padding:28px;border-radius:10px;overflow:hidden;border:1px solid;transition:.2s}
+.domainGroup{font-size:13px;font-weight:600;letter-spacing:4px;color:var(--lilac);
+  margin:6px 0 20px;display:flex;align-items:center;gap:16px}
+.domainGroup::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,rgba(255,45,79,.4),transparent)}
+.domainGroup + .cards3{margin-bottom:40px}
+.domain{position:relative;border-radius:10px;overflow:hidden;border:1px solid;transition:.2s;
+  display:flex;flex-direction:column}
 .domain:hover{transform:translateY(-4px)}
-.domain .n{font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:20px;margin-bottom:26px}
-.domain .ico{font-size:34px;line-height:1;margin-bottom:20px}
-.domain h4{font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:24px;letter-spacing:1.2px;margin:0 0 12px}
-.domain p{margin:0 0 22px;font-size:16px;line-height:1.7;color:var(--muted);max-width:280px}
-.domain a{display:inline-flex;align-items:center;gap:10px;font-size:16px;font-weight:500}
+/* the SVG banner sits flush at the top of the card */
+.domainArtWrap{position:relative;border-bottom:1px solid var(--line)}
+.domainArt{display:block;width:100%;height:auto}
+.domainArtWrap .n{position:absolute;top:12px;right:16px;font-family:var(--font-oswald),sans-serif;
+  font-weight:700;font-size:19px;letter-spacing:1px;opacity:.75}
+.domainBody{padding:22px 26px 26px;display:flex;flex-direction:column;flex:1}
+.domain h4{font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:22px;letter-spacing:1.2px;margin:0 0 10px}
+.domain p{margin:0 0 20px;font-size:15.5px;line-height:1.65;color:var(--muted);flex:1}
+.domain a{display:inline-flex;align-items:center;gap:10px;font-size:15.5px;font-weight:500}
+/* the whole card opens the explainer, so the trigger stretches across it */
+.domainClickable{cursor:var(--spider-lg),pointer}
+.domainMore{display:inline-flex;align-items:center;gap:9px;font-size:15.5px;font-weight:500;
+  background:none;border:none;padding:0;text-align:left}
+.domainMore::after{content:"";position:absolute;inset:0;border-radius:inherit}
+.domainMore span{transition:transform .18s}
+.domain:hover .domainMore span{transform:translateX(4px)}
+
+/* domain explainer popup */
+.domainModal{max-width:660px}
+.domainModalArt{border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.domainModalArt svg{display:block;width:100%;height:auto}
+.domainModalSection{margin-top:22px}
+.domainModalSection h3{font-size:11.5px;letter-spacing:1.8px;color:#8d8091;margin:0 0 10px;font-weight:600}
+.domainModalNote{margin:0 0 12px;padding:11px 14px;border-radius:8px;font-size:14px;line-height:1.6;
+  color:#cfc3d2;background:rgba(0,230,118,.07);border:1px solid rgba(0,230,118,.25)}
+.domainModalSection ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.domainModalSection li{display:flex;gap:10px;align-items:flex-start;font-size:14.5px;
+  line-height:1.6;color:#cfc3d2}
+.domainModalSection li span{flex:none;line-height:1.5}
+.tagRow{display:flex;flex-wrap:wrap;gap:8px}
+.tag{padding:5px 12px;border-radius:20px;font-size:12.5px;border:1px solid;background:rgba(255,255,255,.03)}
+
+/* ===== domain fit finder (/fit) ===== */
+.fitCard{padding:32px 34px;position:relative;overflow:hidden}
+.fitProgress{position:absolute;top:0;left:0;right:0;height:3px;background:rgba(255,255,255,.07)}
+.fitProgress div{height:100%;background:var(--grad);transition:width .3s ease}
+.fitStepLabel{font-size:11.5px;letter-spacing:2.2px;color:#8d8091;margin-bottom:12px}
+.fitTrackNote{margin:0 0 18px;font-size:14px;line-height:1.6;color:#a99bad;
+  padding:11px 14px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.03)}
+.fitPrompt{font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:25px;
+  line-height:1.3;color:#f4eef6;margin:0 0 24px;letter-spacing:.3px}
+.fitOptions{display:grid;gap:11px}
+.fitOption{display:flex;align-items:flex-start;gap:14px;text-align:left;width:100%;
+  padding:16px 18px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.03);
+  color:#cfc3d2;font-size:15.5px;line-height:1.5;transition:.15s}
+.fitOption:hover{border-color:rgba(255,45,79,.5);background:rgba(255,45,79,.07);color:#f4eef6}
+.fitOption.chosen{border-color:var(--red);background:rgba(255,45,79,.14);color:#fff}
+.fitOption .letter{flex:none;width:24px;height:24px;border-radius:6px;display:flex;
+  align-items:center;justify-content:center;font-size:12px;font-weight:700;
+  background:rgba(255,255,255,.08);color:#a99bad}
+.fitOption:hover .letter,.fitOption.chosen .letter{background:var(--red);color:#fff}
+
+.fitResult{display:grid;gap:22px}
+.fitPodium{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.fitPick{border:1px solid;border-radius:10px;overflow:hidden;background:rgba(11,6,14,.6);
+  display:flex;flex-direction:column}
+.fitPickArt svg{display:block;width:100%;height:auto}
+.fitPickBody{padding:16px 18px 20px}
+.fitRank{font-family:var(--font-oswald),sans-serif;font-weight:700;font-size:14px;letter-spacing:1px}
+.fitPick h3{font-family:var(--font-oswald),sans-serif;font-weight:600;font-size:18px;
+  margin:4px 0 10px;letter-spacing:.6px}
+.fitBar{height:4px;border-radius:4px;background:rgba(255,255,255,.08);margin-bottom:12px}
+.fitBar div{height:100%;border-radius:4px;transition:width .4s ease}
+.fitPick p{margin:0;font-size:13.5px;line-height:1.55;color:var(--muted)}
+.fitAlso{margin:18px 0 0;font-size:13.5px;color:#8d8091}
+
+.chatLog{display:flex;flex-direction:column;gap:12px;max-height:420px;overflow-y:auto;
+  padding:4px 2px 4px 0;margin-bottom:16px}
+.bubble{max-width:82%;padding:13px 16px;border-radius:12px;font-size:14.5px;line-height:1.6;
+  white-space:pre-wrap;word-break:break-word}
+.bubble.user{align-self:flex-end;background:rgba(255,45,79,.16);border:1px solid rgba(255,45,79,.35);color:#f4eef6}
+.bubble.assistant{align-self:flex-start;background:rgba(255,255,255,.04);border:1px solid var(--line);color:#cfc3d2}
+.bubble.thinking{color:#8d8091;font-style:italic}
+.chatForm{display:flex;gap:10px;align-items:center}
+.chatForm .input{flex:1;min-width:0}
+.fitActions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;
+  margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
+
+@media (max-width:720px){
+  .fitCard{padding:24px 20px}
+  .fitPrompt{font-size:21px}
+  .fitOption{padding:14px;font-size:14.5px}
+  .fitPodium{grid-template-columns:1fr}
+  .bubble{max-width:92%}
+  .fitActions .btn{width:100%;justify-content:center}
+}
+
+/* the apply-section call to action */
+.ctaCard{padding:36px 32px;position:sticky;top:96px}
+.ctaList{list-style:none;margin:0 0 26px;padding:0;display:grid;gap:11px}
+.ctaList li{display:flex;gap:11px;align-items:flex-start;font-size:14.5px;color:#b3a6b7;line-height:1.5}
+.ctaList span{color:#00e676;flex:none}
+.ctaList strong{color:#f2ebf4;font-weight:600}
 
 /* form */
 .applyGrid{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);gap:60px;align-items:start}
@@ -246,6 +365,166 @@ textarea.input{height:106px;resize:none}
 .quote .row{max-width:1000px;margin:0 auto;display:flex;align-items:center;gap:24px}
 .quote .txt{font-size:22px;font-weight:600;letter-spacing:5px;color:#e9e1eb;white-space:nowrap}
 
+/* landing page grids that used to be fixed 4/5-column inline styles */
+.prepGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}
+.applyLede{font-size:56px;line-height:1.05;margin-top:12px}
+.applyShout{font-size:104px;line-height:1;margin-top:6px}
+
+/* application form */
+.applyForm{padding:38px 44px}
+.otpRow{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.otpRow .otpField{flex:1 1 240px;min-width:0}
+.otpBox{padding:20px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;margin-bottom:28px}
+@media (max-width:720px){
+  .applyForm{padding:26px 20px}
+  .otpBox{padding:16px}
+  .otpRow .btn{width:100%;justify-content:center}
+}
+
+/* ===== portal shell — shared by the admin panel and the candidate dashboard =====
+   These live in CSS rather than inline styles so they can carry media queries;
+   the panels used to be fixed multi-column grids that overflowed on phones. */
+.portal{display:flex;flex-direction:column;min-height:100vh}
+.portalNav{position:sticky;top:0;z-index:50;padding:12px 24px;backdrop-filter:blur(14px);
+  background:rgba(8,5,10,.88);border-bottom:1px solid var(--line)}
+.portalNav.admin{background:rgba(26,6,12,.9);border-bottom-color:rgba(255,45,79,.28)}
+.portalNav .inner{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.portalBrand{display:flex;align-items:center;gap:12px;color:var(--text);flex:none}
+.portalBrand span{font-family:var(--font-oswald),sans-serif;font-size:19px;letter-spacing:1px}
+.portalNav.admin .portalBrand{color:var(--red)}
+.portalNavRight{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-left:auto}
+.portalLinks{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.portalLinks a{padding:7px 13px;border-radius:7px;font-size:14.5px;color:var(--muted2);
+  border:1px solid transparent;white-space:nowrap}
+.portalLinks a:hover{color:#fff;background:rgba(255,255,255,.06)}
+.portalLinks a.active{color:var(--red);background:rgba(255,45,79,.12);border-color:rgba(255,45,79,.35)}
+.portalUser{display:flex;align-items:center;gap:10px;padding-left:18px;border-left:1px solid var(--line)}
+.portalUser .avatar{width:32px;height:32px;flex:none;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:14px;font-weight:700;color:#fff;background:var(--grad)}
+.portalUser .who{font-size:13.5px;color:var(--muted);line-height:1.3;max-width:190px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.portalUser .role{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--red-soft)}
+.btnQuiet{background:transparent;border:1px solid var(--line);color:var(--text);
+  padding:7px 13px;border-radius:7px;font-size:13px;white-space:nowrap}
+.btnQuiet:hover{border-color:var(--red);color:var(--red-soft)}
+.portalMain{flex:1;padding:36px 24px 72px}
+
+/* page headers */
+.pageHead{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
+  flex-wrap:wrap;margin-bottom:28px}
+.pageHead h1{font-size:40px;margin:0 0 6px;letter-spacing:1px;line-height:1.05}
+.pageHead p{margin:0;font-size:16.5px;color:var(--muted)}
+.pageHead .actions{display:flex;gap:10px;flex-wrap:wrap}
+
+/* stat tiles */
+.statGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:28px}
+.stat{padding:18px 20px;border-radius:10px;border:1px solid var(--line);
+  background:linear-gradient(160deg,rgba(255,45,79,.06),rgba(14,8,17,.6));display:block}
+.stat:hover{border-color:rgba(255,45,79,.4)}
+.stat .k{font-size:11.5px;letter-spacing:1.6px;text-transform:uppercase;color:#8d8091}
+.stat .v{font-family:var(--font-oswald),sans-serif;font-size:34px;line-height:1.1;margin-top:6px;color:#f4eef6}
+.stat.accent .v{color:var(--red)}
+
+/* tables — the wrapper is what makes them survive a phone */
+.tableWrap{width:100%;overflow-x:auto;border-radius:12px;border:1px solid var(--line);
+  background:linear-gradient(170deg,rgba(26,13,30,.85),rgba(11,6,14,.9))}
+.dataTable{width:100%;min-width:680px;border-collapse:collapse;font-size:14px}
+.dataTable thead tr{background:rgba(0,0,0,.4);border-bottom:1px solid var(--line);text-align:left}
+.dataTable th{padding:14px 20px;font-weight:500;color:#a99bad;letter-spacing:.3px;white-space:nowrap}
+.dataTable td{padding:14px 20px;border-bottom:1px solid var(--line);vertical-align:top}
+.dataTable tbody tr:last-child td{border-bottom:none}
+.dataTable tbody tr:hover{background:rgba(255,255,255,.02)}
+.dataTable .primary{color:#f4eef6;font-weight:500}
+.dataTable .sub{color:#8d8091;font-size:12.5px;margin-top:3px;word-break:break-word}
+.dataTable .num{font-family:ui-monospace,monospace;font-size:13px;color:#cfc3d2}
+.emptyRow{padding:44px 20px;text-align:center;color:#8d8091}
+
+/* filter bar */
+.filterBar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px}
+.filterBar .input{width:auto;min-width:170px;padding:9px 12px;font-size:14px}
+.filterBar .grow{flex:1 1 220px;min-width:0}
+
+/* status pills */
+.pill{display:inline-block;padding:4px 11px;border-radius:20px;font-size:12px;font-weight:600;
+  letter-spacing:.3px;white-space:nowrap;border:1px solid transparent}
+.pill.neutral{color:#cfc3d2;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.16)}
+.pill.info{color:var(--purple-soft);background:rgba(176,107,255,.14);border-color:rgba(176,107,255,.35)}
+.pill.warn{color:var(--pink);background:rgba(224,71,154,.14);border-color:rgba(224,71,154,.35)}
+.pill.good{color:#00e676;background:rgba(0,230,118,.13);border-color:rgba(0,230,118,.34)}
+.pill.bad{color:var(--red-soft);background:rgba(255,45,79,.14);border-color:rgba(255,45,79,.38)}
+
+/* two-column detail view */
+.detailGrid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:22px;align-items:start}
+.kvGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:20px 16px}
+.kv .k{font-size:11.5px;letter-spacing:1.5px;text-transform:uppercase;color:#8d8091;margin-bottom:5px}
+.kv .v{color:#cfc3d2;font-size:15px;word-break:break-word}
+.prose{color:#cfc3d2;line-height:1.65;white-space:pre-wrap;background:rgba(0,0,0,.35);
+  padding:18px;border-radius:8px;border:1px solid var(--line);font-size:15px}
+
+/* modals */
+.modalBackdrop{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.82);backdrop-filter:blur(3px);
+  display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto}
+.modalCard{width:100%;max-width:580px;max-height:90vh;overflow-y:auto;position:relative;padding:28px}
+.modalCard .close{position:absolute;top:16px;right:18px;background:none;border:none;color:#a99bad;
+  font-size:26px;line-height:1;padding:4px}
+.modalCard .close:hover{color:var(--red)}
+.modalTitle{font-size:22px;margin:0 0 20px;color:var(--red);padding-right:32px}
+
+/* embedded task brief */
+.pdfBlock{border:1px solid var(--line);border-radius:10px;overflow:hidden;
+  margin-bottom:26px;background:rgba(0,0,0,.32)}
+.pdfBar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:11px 16px;border-bottom:1px solid var(--line);font-size:12px;letter-spacing:1.5px;color:#8d8091}
+.pdfFrame{height:620px;background:#0b0610}
+.pdfFrame object,.pdfFrame iframe{width:100%;height:100%;display:block;border:none}
+/* shown by the browser only when it cannot render the PDF itself (iOS, mostly) */
+.pdfFallback{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;padding:28px;text-align:center;color:#a99bad;font-size:14.5px}
+
+/* the submit block at the foot of a task */
+.submitBlock{border:1px solid rgba(255,45,79,.3);border-radius:10px;padding:24px;
+  background:linear-gradient(150deg,rgba(255,45,79,.07),rgba(12,7,15,.55))}
+
+/* inline feedback */
+.alert{border-radius:8px;padding:11px 15px;margin-bottom:18px;font-size:14px;line-height:1.5}
+.alert.err{background:rgba(255,45,79,.12);border:1px solid rgba(255,45,79,.4);color:#ff6b85}
+.alert.ok{background:rgba(0,230,118,.1);border:1px solid rgba(0,230,118,.3);color:#00e676}
+
+/* auth cards */
+.authWrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.authCard{width:100%;max-width:430px;padding:36px 30px}
+.authCard .lede{color:#a99bad;font-size:14.5px;line-height:1.6;margin:0 0 26px}
+.authForm{display:flex;flex-direction:column;gap:14px;text-align:left}
+
+@media (max-width:900px){
+  .detailGrid{grid-template-columns:1fr}
+  .pageHead h1{font-size:32px}
+  .portalMain{padding:28px 18px 60px}
+  .pdfFrame{height:460px}
+}
+@media (max-width:640px){
+  .portalNav{padding:10px 16px}
+  .portalNav .inner{gap:12px}
+  .portalNavRight{width:100%;gap:12px;justify-content:space-between}
+  .portalLinks{order:2;width:100%}
+  .portalLinks a{flex:1 1 auto;text-align:center;padding:7px 10px;font-size:13.5px}
+  .portalUser{padding-left:0;border-left:none}
+  .portalUser .who{max-width:130px}
+  .pageHead{align-items:flex-start}
+  .pageHead h1{font-size:27px}
+  .pageHead p{font-size:15px}
+  .pageHead .actions,.pageHead .actions .btn{width:100%;justify-content:center}
+  .statGrid{grid-template-columns:1fr 1fr;gap:10px}
+  .stat{padding:14px}
+  .stat .v{font-size:26px}
+  .filterBar .input,.filterBar .grow{width:100%;flex:1 1 100%}
+  .modalCard{padding:22px 18px}
+  .authCard{padding:28px 20px}
+  .pdfFrame{height:340px}
+  .submitBlock{padding:18px}
+}
+
 @media (max-width:1180px){
   .hero .grid,.secHead,.applyGrid{grid-template-columns:1fr}
   .secHead .side{border-left:none;padding-left:0;padding-top:0}
@@ -253,8 +532,15 @@ textarea.input{height:106px;resize:none}
   .secHead h2{font-size:48px}
   .cards3{grid-template-columns:1fr 1fr}
   .tl{grid-template-columns:1fr 1fr}
-  .navLinks{display:none}
   .banner{flex-wrap:wrap}
+  /* the nav links used to be display:none here, which left tablets and phones
+     with no way to reach the sections — they now sit on their own scrollable row */
+  .nav .inner{flex-wrap:wrap;padding:12px 20px;gap:14px}
+  .navLinks{order:3;width:100%;gap:22px;overflow-x:auto;padding-bottom:2px;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .navLinks::-webkit-scrollbar{display:none}
+  .navLinks a{white-space:nowrap;font-size:15px}
+  .heroArt{min-height:460px}
 }
 @media (max-width:720px){
   .grit{--grit-dirt:250px;--grit-grain:140px}   /* smaller type needs finer damage */
@@ -263,4 +549,25 @@ textarea.input{height:106px;resize:none}
   .hero{padding:48px 20px 64px}
   .hero h1{font-size:58px}
   .cards3,.tl,.two{grid-template-columns:1fr}
+  .prepGrid{grid-template-columns:1fr 1fr}
+  .heroArt{min-height:360px}
+  .ctaCard{position:static;padding:28px 22px}
+  .domainGroup{letter-spacing:3px;font-size:12px}
+  .domainBody{padding:20px}
+  .chip{padding:8px 12px;font-size:13px;gap:7px}
+  .secHead h2{font-size:38px}
+  .banner{padding:22px 20px;gap:20px}
+  .banner .btn,.banner .title{width:100%}
+  /* the quote line is one long nowrap string — let it breathe instead of clipping */
+  .quote{padding:48px 20px 56px}
+  .quote .row{flex-wrap:wrap;justify-content:center;gap:14px}
+  .quote .txt{white-space:normal;font-size:17px;letter-spacing:3px;line-height:1.5}
+  .quote .row > div:first-child,.quote .row > div:last-child{display:none} /* the two hairlines */
+  .applyLede{font-size:38px}
+  .applyShout{font-size:60px}
+}
+@media (max-width:420px){
+  .hero h1{font-size:46px}
+  .prepGrid{grid-template-columns:1fr}
+  .chip{display:none}   /* they overlap once the art is this narrow */
 }

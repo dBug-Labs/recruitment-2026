@@ -21,21 +21,59 @@
 
 import { ObjectId }                       from 'mongodb'
 import { getCollection }                  from '@/lib/db'
-import { ApplicationSchema, TECH_DOMAINS} from '@/lib/schemas'
+import { ApplicationSchema, TECH_DOMAINS, domainKeys } from '@/lib/schemas'
 import { uploadResume, validatePdfBuffer } from '@/lib/storage'
 import { checkRateLimit, getClientIp }    from '@/lib/ratelimit'
 import { sendApplicationConfirmation }    from '@/lib/email'
 import { withErrorHandling }              from '@/lib/rbac'
+import { applicationWindowState, applicationsOpenAt, applicationsCloseAt, taskDeadlineFor, fmtIstDate } from '@/lib/recruitment'
 import crypto                             from 'crypto'
 import bcrypt                             from 'bcryptjs'
 
 const DRIVE_ID = process.env.DRIVE_ID ?? '2026'
 
+/**
+ * Human-facing applicant id: BND-### with three random digits.
+ *
+ * That is only 1000 codes per drive, so collisions are expected rather than
+ * rare — we retry against the unique index and widen to four digits if the
+ * space is genuinely crowded. Past ~1000 applicants, raise DIGITS.
+ */
+async function generateApplicantId(collection) {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const candidate = `BND-${crypto.randomInt(100, 1000)}`
+    const clash = await collection.countDocuments(
+      { driveId: DRIVE_ID, applicantId: candidate },
+      { limit: 1 }
+    )
+    if (clash === 0) return candidate
+  }
+  // 3-digit space is saturated — fall back to 4 so intake never blocks
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const candidate = `BND-${crypto.randomInt(1000, 10000)}`
+    const clash = await collection.countDocuments(
+      { driveId: DRIVE_ID, applicantId: candidate },
+      { limit: 1 }
+    )
+    if (clash === 0) return candidate
+  }
+  throw new Error('Could not allocate an applicant id')
+}
+
 // ─── Cloudflare Turnstile verification ───────────────────────────────────────
 
 async function verifyTurnstile(token) {
   const secret = process.env.TURNSTILE_SECRET_KEY
-  if (!secret) return true // skip in dev if no key
+  if (!secret) return true // no key configured → nothing to check
+
+  // Turnstile widgets only solve on domains registered with the key, so a
+  // configured key would otherwise make every local submission fail with 403.
+  // Development skips the check; production always enforces it.
+  if (process.env.NODE_ENV !== 'production') {
+    if (!token) console.warn('[turnstile] no token — skipped verification (development)')
+    return true
+  }
+
   if (!token) return false
 
   const body = new URLSearchParams()
@@ -62,7 +100,23 @@ export const POST = withErrorHandling(async function handler(request) {
     return jsonError('Invalid form data', 400)
   }
 
-  // 2. Honeypot check
+  // 2. Intake window. Development is let through with a warning so the form can
+  //    still be exercised outside the real dates.
+  const windowState = applicationWindowState()
+  if (windowState !== 'open') {
+    if (process.env.NODE_ENV === 'production') {
+      return jsonError(
+        windowState === 'before'
+          ? `Applications open on ${fmtIstDate(applicationsOpenAt())}.`
+          : `Applications closed on ${fmtIstDate(applicationsCloseAt())}.`,
+        403,
+        { window: windowState }
+      )
+    }
+    console.warn(`[applications] intake window is "${windowState}" — allowed anyway (development)`)
+  }
+
+  // 3. Honeypot check
   const honeypot = formData.get('_hp') ?? ''
   if (honeypot !== '') {
     return jsonSuccess({ applicationId: 'bot-' + Date.now() }, 200)
@@ -115,19 +169,26 @@ export const POST = withErrorHandling(async function handler(request) {
     return jsonError('SRM email not verified. Please verify your email with OTP.', 403, { fields: { srmEmail: 'Email not verified' } })
   }
 
-  // 7. Duplicate Check
+  // 7. Duplicate Check — one application per SRM email *and* per registration no.
   const appCol = await getCollection('applications')
-  const existing = await appCol.findOne({ driveId: DRIVE_ID, srmEmail: data.srmEmail })
+  const existing = await appCol.findOne({
+    driveId: DRIVE_ID,
+    $or: [
+      { srmEmail:           data.srmEmail },
+      { registrationNumber: data.registrationNumber },
+    ],
+  })
   if (existing) {
+    const clash = existing.srmEmail === data.srmEmail ? 'SRM email' : 'registration number'
     return jsonError(
-      'An application with this SRM email already exists.',
+      `An application with this ${clash} already exists.`,
       409,
       { applicationId: existing._id.toString() }
     )
   }
 
-  // 8. Generate Password & Hash
-  const plainPassword = crypto.randomBytes(6).toString('hex') // e.g., '1a2b3c4d5e6f'
+  // 8. Generate the short dashboard password (5 digits, as specified)
+  const plainPassword = crypto.randomInt(10000, 100000).toString() // e.g. '48213'
   const passwordHash = await bcrypt.hash(plainPassword, 10)
 
   // 9. Handle Resume Upload
@@ -144,6 +205,10 @@ export const POST = withErrorHandling(async function handler(request) {
     })
   }
 
+  // The id is minted up front so the GridFS metadata and the application
+  // document agree — GET /api/resumes/:applicationId looks the file up by it.
+  const applicationObjectId = new ObjectId()
+
   if (resumeFile && resumeFile.size > 0) {
     const buffer      = Buffer.from(await resumeFile.arrayBuffer())
     const validation  = validatePdfBuffer(buffer)
@@ -151,9 +216,8 @@ export const POST = withErrorHandling(async function handler(request) {
       return jsonError(validation.reason, 422, { fields: { resume: validation.reason } })
     }
 
-    const tempId = new ObjectId()
     const upload = await uploadResume(buffer, resumeFile.name, {
-      applicationId: tempId.toString(),
+      applicationId: applicationObjectId.toString(),
       email:         data.srmEmail,
       driveId:       DRIVE_ID,
     })
@@ -162,7 +226,11 @@ export const POST = withErrorHandling(async function handler(request) {
 
   // 10. Insert application document
   const now = new Date()
+  const applicantId = await generateApplicantId(appCol)
+
   const doc = {
+    _id:                applicationObjectId,
+    applicantId,
     driveId:            DRIVE_ID,
     name:               data.name,
     personalEmail:      data.personalEmail,
@@ -172,6 +240,9 @@ export const POST = withErrorHandling(async function handler(request) {
     department:         data.department,
     year:               data.year,
     domains:            data.domains,
+    // short keys alongside the labels — tasks, assignments and domain-lead
+    // scoping all speak in keys, so filtering never has to translate
+    domainKeys:         domainKeys(data.domains),
     question1:          data.question1,
     question2:          data.question2,
     resume:             resumeData,
@@ -191,18 +262,65 @@ export const POST = withErrorHandling(async function handler(request) {
   // Clean up OTP record
   await otpCol.deleteOne({ _id: otpRecord._id })
 
-  // 11. Send confirmation email with password
+  // 11. The candidate's own five-day clock starts now, not at a shared cut-off.
+  const dueAt = taskDeadlineFor(now)
+
+  // 12. Hand over the task straight away if one is live for their first choice.
+  //     The pipeline is apply → task → shortlist, so waiting for a human to
+  //     assign it would eat into the five days they were promised.
+  try {
+    const firstDomain = doc.domainKeys[0]
+    if (firstDomain) {
+      const tasksCol = await getCollection('tasks')
+      const task = await tasksCol.findOne(
+        { driveId: DRIVE_ID, domain: firstDomain, active: true },
+        { sort: { createdAt: -1 } }
+      )
+      if (task) {
+        const assignments = await getCollection('assignments')
+        await assignments.insertOne({
+          driveId:       DRIVE_ID,
+          applicationId: applicationObjectId,
+          taskId:        task._id,
+          domain:        task.domain,
+          status:        'assigned',
+          dueAt,
+          submission:    null,
+          history:       [],
+          score:         null,
+          feedback:      '',
+          assignedBy:    { id: 'system', email: 'auto-assign' },
+          assignedAt:    now,
+          updatedAt:     now,
+        })
+        await appCol.updateOne(
+          { _id: applicationObjectId },
+          { $set: { status: 'task_assigned', assignedDomain: task.domain, updatedAt: now } }
+        )
+      } else {
+        console.warn(`[applications] no active task for domain "${firstDomain}" — nothing auto-assigned`)
+      }
+    }
+  } catch (err) {
+    // A failed auto-assign must not lose the application; an admin can assign later.
+    console.error('[applications] auto-assign failed:', err)
+  }
+
+  // 13. Send confirmation email with password and their personal deadline
   sendApplicationConfirmation({
     name:          data.name,
     email:         data.srmEmail,
-    applicationId,
+    applicantId,
     domains:       data.domains,
-    password:      plainPassword
+    password:      plainPassword,
+    dueAt,
   }).catch((err) => console.error('[email] Confirmation send failed:', err))
 
   return jsonSuccess(
     {
       applicationId,
+      applicantId,
+      dueAt:   dueAt.toISOString(),
       message: 'Application submitted successfully! Check your email for dashboard access.',
     },
     201

@@ -1,83 +1,147 @@
+import Link from "next/link";
+import { ObjectId } from "mongodb";
 import { auth } from "@/lib/auth";
 import { getCollection } from "@/lib/db";
-import { ObjectId } from "mongodb";
+import { StatusPill, fmtDate, fmtDateTime } from "../admin/_components/status";
 
-function StatusBadge({ status }) {
-  const map = {
-    submitted: { color: "#cfc3d2", bg: "rgba(255,255,255,0.1)", label: "Application Received" },
-    under_review: { color: "#cfc3d2", bg: "rgba(255,255,255,0.1)", label: "Under Review" },
-    shortlisted: { color: "var(--purple-soft)", bg: "rgba(176,107,255,0.15)", label: "Shortlisted" },
-    task_assigned: { color: "var(--pink)", bg: "rgba(224,71,154,0.15)", label: "Task Assigned" },
-    task_submitted: { color: "#cfc3d2", bg: "rgba(255,255,255,0.1)", label: "Task Under Review" },
-    interview_scheduled: { color: "var(--pink)", bg: "rgba(224,71,154,0.15)", label: "Interview Scheduled" },
-    selected: { color: "#00e676", bg: "rgba(0,230,118,0.15)", label: "Selected" },
-    rejected: { color: "#ff2d4f", bg: "rgba(255,45,79,0.15)", label: "Not Selected" },
-  };
-
-  const s = map[status] ?? map.submitted;
-
-  return (
-    <span style={{ display: "inline-block", padding: "6px 12px", borderRadius: 20, fontSize: 13, fontWeight: 600, color: s.color, background: s.bg, border: `1px solid ${s.color}40` }}>
-      {s.label}
-    </span>
-  );
-}
+/** What the candidate should do next, per status. */
+const NEXT_STEP = {
+  submitted: "We have your application. Reviews start once applications close — watch your inbox.",
+  under_review: "A reviewer is reading your application right now. Nothing to do yet.",
+  shortlisted: "You're through the first cut. A task will land here shortly.",
+  task_assigned: "You have a task waiting. Open My Tasks and submit before the deadline.",
+  task_submitted: "Your submission is in and being reviewed. Hang tight.",
+  interview_scheduled: "You're through to interviews — check the slot below and be on time.",
+  selected: "Welcome to dBug Labs! Onboarding details are on their way.",
+  rejected: "We couldn't move ahead this cycle. Keep building — we'd love to see you apply again.",
+};
 
 export default async function DashboardPage() {
   const session = await auth();
-  
-  if (!session.user.applicationId) {
+
+  if (!session.user.applicationId || !ObjectId.isValid(session.user.applicationId)) {
     return (
-      <div className="formCard" style={{ padding: 40, textAlign: "center" }}>
-        <h2 style={{ color: "var(--pink)", marginBottom: 16 }}>Application Not Found</h2>
-        <p style={{ color: "#a99bad", lineHeight: 1.6 }}>
+      <div className="formCard" style={{ padding: 32, textAlign: "center" }}>
+        <h1 style={{ color: "var(--pink)", marginBottom: 14, fontSize: 24 }}>Application not found</h1>
+        <p style={{ color: "#a99bad", lineHeight: 1.7, margin: 0 }}>
           We could not find an application linked to <strong>{session.user.email}</strong>.<br />
-          If you haven't applied yet, please submit your application first.<br />
-          If you used a different email, please sign out and sign in with the correct one.
+          If you haven&apos;t applied yet, <Link href="/apply" style={{ color: "var(--purple-soft)" }}>submit your application</Link> first.
         </p>
       </div>
     );
   }
 
-  const applications = await getCollection("applications");
-  const application = await applications.findOne({ _id: new ObjectId(session.user.applicationId) });
+  const applicationId = new ObjectId(session.user.applicationId);
+  const [applications, assignmentsCol, interviewsCol, tasksCol] = await Promise.all([
+    getCollection("applications"),
+    getCollection("assignments"),
+    getCollection("interviews"),
+    getCollection("tasks"),
+  ]);
 
+  const application = await applications.findOne({ _id: applicationId });
   if (!application) {
-    return <div>Error loading application data.</div>;
+    return <div className="formCard" style={{ padding: 32 }}>We could not load your application data.</div>;
   }
+
+  const [assignments, interviews] = await Promise.all([
+    assignmentsCol.find({ applicationId }).sort({ dueAt: 1 }).toArray(),
+    interviewsCol.find({ applicationId, slotAt: { $gte: new Date() } }).sort({ slotAt: 1 }).toArray(),
+  ]);
+
+  const tasks = await tasksCol
+    .find({ _id: { $in: assignments.map((a) => a.taskId).filter(Boolean) } })
+    .toArray();
+  const taskById = new Map(tasks.map((t) => [t._id.toString(), t]));
+
+  const openAssignments = assignments.filter((a) => a.status === "assigned");
 
   return (
     <div>
-      <h1 className="display grit grit-ink" style={{ fontSize: 42, marginBottom: 8, letterSpacing: 1 }}>Welcome back, {application.name.split(" ")[0]}</h1>
-      <p style={{ color: "#cfc3d2", fontSize: 18, marginBottom: 40 }}>Here is the current status of your application.</p>
-
-      <div className="formCard" style={{ padding: 32 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, paddingBottom: 24, borderBottom: "1px solid var(--line)" }}>
-          <div>
-            <div style={{ fontSize: 13, color: "#8d8091", letterSpacing: 1, marginBottom: 6 }}>CURRENT STATUS</div>
-            <StatusBadge status={application.status} />
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 13, color: "#8d8091", letterSpacing: 1, marginBottom: 6 }}>REG NUMBER</div>
-            <div style={{ fontFamily: "monospace", fontSize: 16, color: "var(--purple-soft)" }}>{application.registrationNumber}</div>
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-          <div>
-            <div style={{ fontSize: 13, color: "#8d8091", letterSpacing: 1, marginBottom: 6 }}>DOMAINS</div>
-            <div style={{ color: "#f4eef6" }}>{application.domains.join(", ")}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 13, color: "#8d8091", letterSpacing: 1, marginBottom: 6 }}>APPLIED ON</div>
-            <div style={{ color: "#f4eef6" }}>{new Date(application.createdAt).toLocaleDateString("en-IN", { dateStyle: "long" })}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 13, color: "#8d8091", letterSpacing: 1, marginBottom: 6 }}>BRANCH / YEAR</div>
-            <div style={{ color: "#f4eef6" }}>{application.branch} — {application.year}</div>
-          </div>
+      <div className="pageHead">
+        <div>
+          <h1 className="display grit grit-ink">Welcome back, {application.name.split(" ")[0]}</h1>
+          <p>Here&apos;s where your application stands.</p>
         </div>
       </div>
+
+      <section className="formCard" style={{ padding: 26, marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap", paddingBottom: 20, marginBottom: 20, borderBottom: "1px solid var(--line)" }}>
+          <div>
+            <div style={{ fontSize: 11.5, color: "#8d8091", letterSpacing: 1.5, marginBottom: 8 }}>CURRENT STATUS</div>
+            <StatusPill status={application.status} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: "#8d8091", letterSpacing: 1.5, marginBottom: 8 }}>APPLICANT ID</div>
+            <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 18, color: "var(--purple-soft)", letterSpacing: 1.5 }}>
+              {application.applicantId ?? "—"}
+            </div>
+          </div>
+        </div>
+
+        <p style={{ color: "#cfc3d2", fontSize: 15.5, lineHeight: 1.7, margin: "0 0 22px" }}>
+          {NEXT_STEP[application.status] ?? "We'll be in touch with the next step."}
+        </p>
+
+        <div className="kvGrid">
+          <div className="kv">
+            <div className="k">Domains</div>
+            <div className="v">{(application.domains ?? []).join(", ") || "—"}</div>
+          </div>
+          <div className="kv">
+            <div className="k">Applied on</div>
+            <div className="v">{fmtDate(application.createdAt)}</div>
+          </div>
+          <div className="kv">
+            <div className="k">Branch / year</div>
+            <div className="v">{application.branch} — {application.year}</div>
+          </div>
+          <div className="kv">
+            <div className="k">Resume</div>
+            <div className="v">
+              {application.resume?.fileId
+                ? <a href={`/api/resumes/${application._id.toString()}`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--purple-soft)" }}>View PDF</a>
+                : "Not uploaded"}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {openAssignments.length > 0 && (
+        <section className="formCard" style={{ padding: 22, marginBottom: 20, borderColor: "rgba(255,45,79,.35)" }}>
+          <div style={{ fontSize: 11.5, color: "var(--red-soft)", letterSpacing: 1.5, marginBottom: 10 }}>ACTION NEEDED</div>
+          {openAssignments.map((a) => (
+            <div key={a._id.toString()} style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+              <div>
+                <div style={{ color: "#f4eef6", fontSize: 17, marginBottom: 4 }}>
+                  {taskById.get(a.taskId?.toString())?.title ?? "Your task"}
+                </div>
+                <div style={{ color: "#a99bad", fontSize: 14 }}>Due {fmtDateTime(a.dueAt)}</div>
+              </div>
+              <Link href={`/dashboard/tasks/${a.taskId?.toString()}`} className="btn grad sm">
+                Open task <span>→</span>
+              </Link>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {interviews.length > 0 && (
+        <section className="formCard" style={{ padding: 22 }}>
+          <div style={{ fontSize: 11.5, color: "var(--purple-soft)", letterSpacing: 1.5, marginBottom: 12 }}>UPCOMING INTERVIEW</div>
+          {interviews.map((iv) => (
+            <div key={iv._id.toString()} style={{ marginBottom: 10 }}>
+              <div style={{ color: "#f4eef6", fontSize: 17 }}>{fmtDateTime(iv.slotAt)}</div>
+              <div style={{ color: "#a99bad", fontSize: 14, marginTop: 4 }}>
+                {iv.mode === "online" ? "🌐 Online" : "📍 In person"} ·{" "}
+                {iv.mode === "online"
+                  ? <a href={iv.location} target="_blank" rel="noopener noreferrer" style={{ color: "var(--purple-soft)", wordBreak: "break-all" }}>{iv.location}</a>
+                  : iv.location}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

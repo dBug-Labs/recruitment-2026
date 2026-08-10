@@ -1,3 +1,13 @@
+/**
+ * app/api/submissions/route.js
+ *
+ * POST /api/submissions
+ *
+ * A candidate submits (or re-submits) work for an assignment they own.
+ * Every submission is appended to `history`; the latest one also lands on
+ * `submission` so the dashboard and admin views can read it directly.
+ */
+
 import { auth } from "@/lib/auth";
 import { getCollection } from "@/lib/db";
 import { TaskSubmissionSchema } from "@/lib/schemas";
@@ -8,7 +18,7 @@ export const POST = withErrorHandling(async function handler(request) {
   const session = await auth();
   const user = requireAuth(session);
 
-  if (!user.applicationId) {
+  if (!user.applicationId || !ObjectId.isValid(user.applicationId)) {
     return jsonError("No application found for this user", 403);
   }
 
@@ -30,49 +40,65 @@ export const POST = withErrorHandling(async function handler(request) {
   }
 
   const data = parsed.data;
+  if (!ObjectId.isValid(data.assignmentId)) {
+    return jsonError("Assignment not found or access denied", 404);
+  }
+
   const assignmentsCol = await getCollection("assignments");
   const applicationsCol = await getCollection("applications");
+  const tasksCol = await getCollection("tasks");
 
-  // Verify the assignment belongs to the user
+  // Ownership check is part of the query — a candidate can only ever write to
+  // an assignment whose applicationId matches their session.
   const assignment = await assignmentsCol.findOne({
     _id: new ObjectId(data.assignmentId),
-    applicationId: user.applicationId,
+    applicationId: new ObjectId(user.applicationId),
   });
 
   if (!assignment) {
     return jsonError("Assignment not found or access denied", 404);
   }
 
+  // Honour the task's accepted link type
+  const task = await tasksCol.findOne({ _id: assignment.taskId });
+  if (task?.submissionType && task.submissionType !== "either" && task.submissionType !== data.type) {
+    return jsonError(
+      `This task only accepts ${task.submissionType === "github" ? "GitHub" : "Google Drive"} submissions.`,
+      422,
+      { fields: { type: `Must be a ${task.submissionType} link` } }
+    );
+  }
+
   const now = new Date();
-  
-  // Format the submission object
+  const dueAt = assignment.dueAt ? new Date(assignment.dueAt) : null;
+
   const submissionRecord = {
-    type: data.type,
-    url: data.url,
-    notes: data.notes,
+    type:        data.type,
+    url:         data.url,
+    notes:       data.notes,
     submittedAt: now,
+    late:        dueAt ? now > dueAt : false,
   };
 
-  // Push to history array and update current submission & status
   await assignmentsCol.updateOne(
     { _id: assignment._id },
     {
-      $set: { 
+      $set: {
         submission: submissionRecord,
-        status: "task_submitted",
-        updatedAt: now,
+        status:     "submitted",
+        updatedAt:  now,
       },
       $push: { history: submissionRecord },
     }
   );
 
-  // Update application status to task_submitted if it's currently task_assigned
+  // Only advance the application if it is still waiting on this task
   await applicationsCol.updateOne(
     { _id: new ObjectId(user.applicationId), status: "task_assigned" },
     { $set: { status: "task_submitted", updatedAt: now } }
   );
 
-  return new Response(JSON.stringify({ success: true }), {
+  return new Response(JSON.stringify({ success: true, late: submissionRecord.late }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });

@@ -3,7 +3,11 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-export default function TaskSubmissionForm({ assignmentId }) {
+const TYPE_LABELS = { github: "GitHub repository", drive: "Google Drive link" };
+
+export default function TaskSubmissionForm({ assignmentId, submissionType = "either" }) {
+  // The task decides which link types are accepted; the API enforces the same.
+  const allowedTypes = submissionType === "either" ? ["github", "drive"] : [submissionType];
   const [formState, setFormState] = useState("idle");
   const [errors, setErrors] = useState({});
   const router = useRouter();
@@ -54,10 +58,9 @@ export default function TaskSubmissionForm({ assignmentId }) {
     );
   }
 
+  // The heading lives on the page, so the form starts straight at the fields.
   return (
-    <form ref={formRef} onSubmit={handleSubmit} style={{ marginTop: 24 }}>
-      <h3 style={{ fontSize: 18, color: "var(--lilac)", marginBottom: 16 }}>Submit Your Work</h3>
-      
+    <form ref={formRef} onSubmit={handleSubmit} style={{ marginTop: 20 }}>
       {errors._general && (
         <div style={{ background: "rgba(255,45,79,.12)", border: "1px solid rgba(255,45,79,.4)", borderRadius: 8, padding: "12px 16px", marginBottom: 20, color: "#ff6b85", fontSize: 14 }}>
           ⚠ {errors._general}
@@ -66,13 +69,12 @@ export default function TaskSubmissionForm({ assignmentId }) {
 
       <div style={{ marginBottom: 20 }}>
         <label>Submission Type <span className="req">*</span></label>
-        <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#cfc3d2", fontSize: 15, cursor: "pointer" }}>
-            <input type="radio" name="type" value="github" defaultChecked /> GitHub Repository
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#cfc3d2", fontSize: 15, cursor: "pointer" }}>
-            <input type="radio" name="type" value="drive" /> Google Drive Link
-          </label>
+        <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
+          {allowedTypes.map((t, i) => (
+            <label key={t} style={{ display: "flex", alignItems: "center", gap: 8, color: "#cfc3d2", fontSize: 15 }}>
+              <input type="radio" name="type" value={t} defaultChecked={i === 0} /> {TYPE_LABELS[t]}
+            </label>
+          ))}
         </div>
         {errors.type && <div style={{ color: "var(--pink)", fontSize: 12, marginTop: 4 }}>{errors.type}</div>}
       </div>

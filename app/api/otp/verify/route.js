@@ -50,8 +50,19 @@ export const POST = withErrorHandling(async function handler(request) {
     return jsonError('Invalid OTP', 400, { code: 'invalid' })
   }
 
-  // Mark as verified
-  await col.updateOne({ _id: record._id }, { $set: { verified: true } })
+  // Mark as verified and push the expiry out — the record has to outlive the
+  // OTP's own 10-minute window because the application form checks it on
+  // submit, which can be a while after the candidate verifies.
+  await col.updateOne(
+    { _id: record._id },
+    {
+      $set: {
+        verified:   true,
+        verifiedAt: new Date(),
+        expiresAt:  new Date(Date.now() + 6 * 60 * 60 * 1000), // 6 hours
+      },
+    }
+  )
 
   return jsonSuccess({ verified: true, message: 'Email verified successfully.' })
 })

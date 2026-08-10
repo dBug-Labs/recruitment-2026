@@ -11,7 +11,11 @@
     "start": "next start",
     "lint": "eslint",
     "textures": "node scripts/gen-textures.mjs",
-    "init-db": "node scripts/init-db.mjs"
+    "init-db": "node scripts/init-db.mjs",
+    "seed-dev": "node scripts/seed-dev.mjs",
+    "seed-dev:fresh": "node scripts/seed-dev.mjs --fresh",
+    "clear-dev": "node scripts/clear-dev.mjs",
+    "seed-admins": "node scripts/seed-admins.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

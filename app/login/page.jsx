@@ -1,53 +1,44 @@
-import { signIn } from "@/lib/auth";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { isStaff } from "@/lib/rbac";
+import { candidateLoginAction } from "./actions";
+import CandidateLoginForm from "./LoginForm";
 
 export const metadata = {
-  title: "Login | dBug Labs",
+  title: "Candidate Login | dBug Labs",
 };
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const session = await auth();
+  if (session?.user) {
+    redirect(isStaff(session.user) ? "/admin" : "/dashboard");
+  }
+
   return (
-    <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div className="formCard" style={{ maxWidth: 420, width: "100%", textAlign: "center", padding: "40px 32px" }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🕷</div>
-        <h3 className="cardTitle" style={{ fontSize: 24, margin: "0 0 12px", color: "var(--pink)" }}>
-          PORTAL LOGIN
-        </h3>
-        <p style={{ color: "#a99bad", fontSize: 15, marginBottom: 32, lineHeight: 1.5 }}>
-          Enter your SRM Email or Registration Number and password to continue. For Admin access, leave Email blank.
+    <main className="authWrap">
+      <div className="formCard authCard" style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🕷</div>
+        <h1 className="cardTitle" style={{ fontSize: 23, margin: "0 0 10px", color: "var(--pink)" }}>
+          CANDIDATE PORTAL
+        </h1>
+        <p className="lede">
+          Sign in with your SRM email, personal email or registration number,
+          plus the password we mailed you when your application was received.
         </p>
 
-        <form action={async (formData) => {
-          "use server";
-          const email = formData.get("email")?.toString().trim();
-          const password = formData.get("password")?.toString();
-          
-          await signIn("credentials", { 
-            email: email || undefined, 
-            password, 
-            redirectTo: email ? "/dashboard" : "/admin" 
-          });
-        }} style={{ display: "flex", flexDirection: "column", gap: "16px", textAlign: "left" }}>
-          
-          <input 
-            type="text" 
-            name="email" 
-            placeholder="SRM Email or Reg No (Leave blank for Admin)" 
-            style={{ padding: "14px", borderRadius: "8px", border: "1px solid #2a1f2e", background: "#150b1a", color: "#fff", fontSize: 15, outline: "none" }}
-          />
+        <CandidateLoginForm action={candidateLoginAction} />
 
-          <input 
-            type="password" 
-            name="password" 
-            placeholder="Password" 
-            required
-            style={{ padding: "14px", borderRadius: "8px", border: "1px solid #2a1f2e", background: "#150b1a", color: "#fff", fontSize: 15, outline: "none" }}
-          />
-
-          <button type="submit" className="btn grad" style={{ width: "100%", padding: "14px 0", fontSize: 16, marginTop: "8px", cursor: "pointer" }}>
-            Sign In
-          </button>
-        </form>
-
+        <div style={{ marginTop: 22, fontSize: 13.5, color: "#8d8091", lineHeight: 1.7 }}>
+          Not applied yet?{" "}
+          <Link href="/apply" style={{ color: "var(--purple-soft)" }}>
+            Fill the application form →
+          </Link>
+          <br />
+          <Link href="/admin/login" style={{ color: "#6f6474" }}>
+            Core team login
+          </Link>
+        </div>
       </div>
     </main>
   );
