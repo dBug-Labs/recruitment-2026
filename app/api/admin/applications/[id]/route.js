@@ -14,7 +14,7 @@ import { ObjectId } from "mongodb";
 import { requireStaff, hasDomainAccess, ROLES, withErrorHandling } from "@/lib/rbac";
 import { StatusTransitionSchema, STATUS_TRANSITIONS, domainKeys } from "@/lib/schemas";
 import { logAudit } from "@/lib/audit";
-import { sendResultNotification, sendInterviewShortlist } from "@/lib/email";
+import { sendResultNotification, sendShortlistNotification } from "@/lib/email";
 
 export const PATCH = withErrorHandling(async function handler(request, { params }) {
   const { id } = await params;
@@ -80,11 +80,11 @@ export const PATCH = withErrorHandling(async function handler(request, { params 
   });
 
   // Auto-send lifecycle emails — non-blocking, keyed off the candidate's SRM email
-  if (status === "interview_scheduled") {
-    sendInterviewShortlist({
+  if (status === "shortlisted") {
+    sendShortlistNotification({
       name: application.name,
       email: application.srmEmail,
-    }).catch(err => console.error("[email] Interview shortlist send failed:", err));
+    }).catch(err => console.error("[email] Shortlist notification failed:", err));
   } else if (status === "selected") {
     sendResultNotification({
       name: application.name,

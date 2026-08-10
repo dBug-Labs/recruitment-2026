@@ -8,6 +8,7 @@
  * `submission` so the dashboard and admin views can read it directly.
  */
 
+import { sendTaskSubmissionReceipt } from "@/lib/email";
 import { auth } from "@/lib/auth";
 import { getCollection } from "@/lib/db";
 import { TaskSubmissionSchema } from "@/lib/schemas";
@@ -97,6 +98,21 @@ export const POST = withErrorHandling(async function handler(request) {
     { _id: new ObjectId(user.applicationId), status: "task_assigned" },
     { $set: { status: "task_submitted", updatedAt: now } }
   );
+
+  // Send submission receipt — non-blocking
+  try {
+    const application = await applicationsCol.findOne({ _id: new ObjectId(user.applicationId) });
+    if (application?.srmEmail) {
+      sendTaskSubmissionReceipt({
+        name: application.name,
+        email: application.srmEmail,
+        taskTitle: task?.title ?? "your task",
+        late: submissionRecord.late,
+      }).catch((err) => console.error("[email] Submission receipt failed:", err));
+    }
+  } catch (err) {
+    console.error("[submissions] could not send submission receipt:", err);
+  }
 
   return new Response(JSON.stringify({ success: true, late: submissionRecord.late }), {
     status: 200,
