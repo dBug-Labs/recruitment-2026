@@ -336,9 +336,9 @@ async function seed() {
   for (const l of seededLogins) {
     console.log(`  ${l.srmEmail.padEnd(26)} ${l.registrationNumber.padEnd(16)} ${l.status}`)
   }
-  console.log('\nADMIN LOGIN — http://localhost:3000/admin/login')
-  console.log(`  any email + ADMIN_PASSWORD from .env.local (${process.env.ADMIN_PASSWORD ? 'set' : 'NOT SET'})`)
-  console.log(`  domain lead: ${leadEmail} / ${DEV_PASSWORD}  (sees only the "web" domain)`)
+  console.log('\nADMIN LOGIN — http://localhost:3000/admin/login  (password only, no email)')
+  console.log(`  admin:       ADMIN_PASSWORD from .env.local (${process.env.ADMIN_PASSWORD ? 'set' : 'NOT SET'})`)
+  console.log(`  domain lead: ${DEV_PASSWORD}  →  ${leadEmail}, sees only the "web" domain`)
   console.log('\nAPPLY FLOW — http://localhost:3000/apply')
   console.log('  demo9999@srmist.edu.in is pre-verified; OTPs are printed to the dev server log')
   console.log('─'.repeat(72) + '\n')
