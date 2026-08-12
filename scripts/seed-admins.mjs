@@ -8,6 +8,11 @@
  * authenticate. (The shared ADMIN_PASSWORD from .env.local still works as a
  * break-glass login and needs no row at all.)
  *
+ * /admin/login asks for a password and nothing else, so the password is what
+ * identifies the account. Two accounts sharing one password would be
+ * indistinguishable at sign-in, so this script seeds one account per run and
+ * refuses a password that is already in use.
+ *
  * Usage:
  *   node scripts/seed-admins.mjs --password "some-strong-password"
  *   node scripts/seed-admins.mjs --password "..." --role domain_lead --domains web,aiml
@@ -48,9 +53,22 @@ async function run() {
     process.exit(1)
   }
 
+  if (emails.length > 1) {
+    console.error(
+      `❌  ADMIN_BOOTSTRAP_EMAILS lists ${emails.length} emails, but sign-in is by password alone —\n` +
+      '    every account needs its own. Set one email at a time and re-run with a different --password.'
+    )
+    process.exit(1)
+  }
+
   const password = arg('password')
   if (!password || password.length < 8) {
     console.error('❌  Pass --password with at least 8 characters, e.g.\n    node scripts/seed-admins.mjs --password "correct-horse-battery"')
+    process.exit(1)
+  }
+
+  if (process.env.ADMIN_PASSWORD && password === process.env.ADMIN_PASSWORD) {
+    console.error('❌  That is the shared ADMIN_PASSWORD. A staff account needs a password of its own.')
     process.exit(1)
   }
 
@@ -71,6 +89,21 @@ async function run() {
   await client.connect()
   const users = client.db(process.env.MONGODB_DB).collection('users')
 
+  // A password already belonging to someone else would make the two accounts
+  // indistinguishable at /admin/login, where the password is the only input.
+  const others = await users
+    .find({ role: { $in: VALID_ROLES }, passwordHash: { $exists: true, $ne: null } })
+    .toArray()
+
+  for (const other of others) {
+    if (emails.includes(other.email)) continue
+    if (await bcrypt.compare(password, other.passwordHash)) {
+      console.error(`❌  ${other.email} already signs in with that password. Pick a different one.`)
+      await client.close()
+      process.exit(1)
+    }
+  }
+
   const passwordHash = await bcrypt.hash(password, 10)
   const now = new Date()
 
@@ -88,7 +121,7 @@ async function run() {
   }
 
   await client.close()
-  console.log('\nDone. Sign in at /admin/login with the email and the password you passed.')
+  console.log('\nDone. Sign in at /admin/login with the password you passed — that page asks for nothing else.')
 }
 
 run().catch((err) => {
