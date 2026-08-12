@@ -6,7 +6,7 @@ import { domainScope, allowedDomains } from "../../_components/scope";
 import { fmtDateTime } from "../../_components/status";
 import TaskManager from "../../_components/TaskManager";
 
-export const metadata = { title: "Tasks | dBug Labs Admin" };
+export const metadata = { title: "Tasks · Admin" };
 
 export default async function AdminTasksPage() {
   const session = await auth();

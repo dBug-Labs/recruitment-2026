@@ -7,7 +7,7 @@ import { domainScope } from "../../_components/scope";
 import { fmtDateTime } from "../../_components/status";
 import SubmissionsList from "../../_components/SubmissionsList";
 
-export const metadata = { title: "Submissions | dBug Labs Admin" };
+export const metadata = { title: "Submissions · Admin" };
 
 const TABS = [
   { key: "submitted", label: "Awaiting review" },

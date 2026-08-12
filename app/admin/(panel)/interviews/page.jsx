@@ -6,7 +6,7 @@ import { domainLabel } from "@/lib/schemas";
 import { domainScope } from "../../_components/scope";
 import { fmtDateTime } from "../../_components/status";
 
-export const metadata = { title: "Interviews | dBug Labs Admin" };
+export const metadata = { title: "Interviews · Admin" };
 
 export default async function AdminInterviewsPage({ searchParams }) {
   const { show } = await searchParams;

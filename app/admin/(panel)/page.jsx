@@ -6,7 +6,7 @@ import { APPLICATION_STATUSES, DOMAIN_META, domainLabel } from "@/lib/schemas";
 import { applicationScope, domainScope } from "../_components/scope";
 import { StatusPill, fmtDate, fmtDateTime } from "../_components/status";
 
-export const metadata = { title: "Overview | dBug Labs Admin" };
+export const metadata = { title: "Overview · Admin" };
 
 /** Headline numbers, in the order a reviewer actually works through them. */
 const HEADLINE = ["submitted", "under_review", "shortlisted", "task_assigned", "task_submitted", "interview_scheduled", "selected", "rejected"];

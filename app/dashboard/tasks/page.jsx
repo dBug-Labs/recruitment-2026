@@ -5,7 +5,7 @@ import { getCollection } from "@/lib/db";
 import { domainLabel } from "@/lib/schemas";
 import { AssignmentPill, fmtDateTime } from "../../admin/_components/status";
 
-export const metadata = { title: "My Tasks | dBug Labs" };
+export const metadata = { title: "My Tasks" };
 
 export default async function TasksPage() {
   const session = await auth();

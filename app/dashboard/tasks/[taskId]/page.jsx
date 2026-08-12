@@ -7,7 +7,7 @@ import { domainLabel } from "@/lib/schemas";
 import { fmtDateTime } from "../../../admin/_components/status";
 import TaskSubmissionForm from "./TaskSubmissionForm";
 
-export const metadata = { title: "Task | dBug Labs" };
+export const metadata = { title: "Task" };
 
 export default async function TaskDetailPage({ params }) {
   const { taskId } = await params;

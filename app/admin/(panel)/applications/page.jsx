@@ -7,7 +7,7 @@ import { applicationScope, allowedDomains } from "../../_components/scope";
 import { StatusPill, fmtDate } from "../../_components/status";
 import ApplicationFilters from "../../_components/ApplicationFilters";
 
-export const metadata = { title: "Applications | dBug Labs Admin" };
+export const metadata = { title: "Applications · Admin" };
 
 const PAGE_SIZE = 40;
 

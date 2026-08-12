@@ -4,7 +4,9 @@ import { isStaff } from "@/lib/rbac";
 import DashboardNav from "./_components/DashboardNav";
 
 export const metadata = {
-  title: "Your Dashboard | dBug Labs",
+  title: "Your Dashboard",
+  // Personal candidate data — never index, and don't follow links out of it.
+  robots: { index: false, follow: false, nocache: true },
 };
 
 export default async function DashboardLayout({ children }) {

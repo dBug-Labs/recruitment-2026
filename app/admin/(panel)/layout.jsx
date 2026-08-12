@@ -4,7 +4,8 @@ import { isStaff } from "@/lib/rbac";
 import AdminNav from "../_components/AdminNav";
 
 export const metadata = {
-  title: "Admin Panel | dBug Labs",
+  title: "Admin Panel",
+  robots: { index: false, follow: false, nocache: true },
 };
 
 /**

@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import SiteNav from "@/app/_components/SiteNav";
 import DomainGrid from "@/app/_components/DomainGrid";
+import StructuredData from "@/app/_components/StructuredData";
 
 // Only anchors that actually exist on the page. SiteNav highlights whichever of
 // these is on screen, so the active link is no longer pinned to "Home".
@@ -61,6 +62,7 @@ const PREP = [
 export default function Page() {
   return (
     <main id="top">
+      <StructuredData />
       <SiteNav sections={SECTIONS} />
 
       {/* HERO */}
@@ -89,7 +91,18 @@ export default function Page() {
 
           <div className="heroArt">
             {/* Drop your hero render at /public/hero.png */}
-            <Image src="/hero.png" alt="" fill priority style={{ opacity: 0.95 }} />
+            {/* `sizes` matters here: without it a `fill` image makes Next serve the
+                largest srcset candidate to every device. The art is ~55% of the
+                1440px wrap on desktop, and full-bleed once the grid collapses at
+                1180px. It is also the LCP element, hence `priority`. */}
+            <Image
+              src="/hero.png"
+              alt=""
+              fill
+              priority
+              sizes="(max-width: 1180px) 100vw, 760px"
+              style={{ opacity: 0.95 }}
+            />
             <div style={{ position: "absolute", right: 26, top: 20, display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 600, letterSpacing: 4, color: "#efe4f2" }}>
               RECRUITMENTS &apos;26 <span className="dot" />
             </div>

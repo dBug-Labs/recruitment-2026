@@ -6,7 +6,14 @@ import { candidateLoginAction } from "./actions";
 import CandidateLoginForm from "./LoginForm";
 
 export const metadata = {
-  title: "Candidate Login | dBug Labs",
+  title: "Candidate Login",
+  description:
+    "Sign in to your dBug Labs candidate dashboard to track your application, task deadline, " +
+    "interview slot and result.",
+  alternates: { canonical: "/login" },
+  // Indexable so "dBug Labs login" finds it, but there is nothing here worth
+  // previewing as a snippet beyond the description above.
+  robots: { index: true, follow: true, nocache: true },
 };
 
 export default async function LoginPage() {

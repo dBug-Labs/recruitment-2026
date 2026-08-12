@@ -10,7 +10,7 @@ import { StatusPill, fmtDate, fmtDateTime } from "../../../_components/status";
 import StatusControls from "../../../_components/StatusControls";
 import AssignmentCards from "../../../_components/AssignmentCards";
 
-export const metadata = { title: "Application | dBug Labs Admin" };
+export const metadata = { title: "Application · Admin" };
 
 export default async function AdminApplicationDetail({ params }) {
   const { id } = await params;

@@ -6,7 +6,7 @@ import { adminLoginAction } from "./actions";
 import AdminLoginForm from "./LoginForm";
 
 export const metadata = {
-  title: "Admin Login | dBug Labs",
+  title: "Admin Login",
   robots: { index: false, follow: false },
 };
 

@@ -1,10 +1,23 @@
 import SiteNav from "@/app/_components/SiteNav";
 import FitFinder from "./FitFinder";
 
+const TITLE = "Find your domain — dBug Labs Domain Fit Finder";
+const DESCRIPTION =
+  "Not sure which dBug Labs domain suits you? Answer eight quick questions, then talk it through " +
+  "with our AI advisor. It ranks all ten tech and corporate domains and explains the trade-offs " +
+  "before you pick two on the application form.";
+
 export const metadata = {
-  title: "Find your domain | dBug Labs",
-  description:
-    "Eight questions and a short conversation with our AI advisor to work out which two dBug Labs domains suit you.",
+  title: "Find your domain",
+  description: DESCRIPTION,
+  alternates: { canonical: "/fit" },
+  openGraph: {
+    type: "website",
+    title: TITLE,
+    description: DESCRIPTION,
+    url: "/fit",
+  },
+  twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
 export default function FitPage() {
