@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Script from "next/script";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import SiteNav from "@/app/_components/SiteNav";
 import { DEPARTMENTS, BRANCHES, YEARS, TECH_DOMAINS, CORP_DOMAINS } from "@/lib/schemas";
 
@@ -10,12 +10,35 @@ import { DEPARTMENTS, BRANCHES, YEARS, TECH_DOMAINS, CORP_DOMAINS } from "@/lib/
 // which the FormData below picks up automatically.
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
+const SRM_EMAIL_RE = /^[a-zA-Z]{2}\d{4}@srmist\.edu\.in$/i;
+
+/** Same count the server's 200-word cap uses, so the counter cannot disagree. */
+const words = (str) => str.trim().split(/\s+/).filter(Boolean).length;
+
+/** Seconds before "Resend code" comes back. Every resend costs a real send. */
+const RESEND_COOLDOWN = 45;
+
+/**
+ * The application form.
+ *
+ * ─── Where the OTP sits, and why ─────────────────────────────────────────────
+ *
+ * Verification used to gate the top of the form: you could not fill anything in
+ * until you had asked for a code and typed it back. People asked for a code,
+ * wandered off into the rest of the form, let the ten minutes lapse, and asked
+ * again — several codes each, most of them never used, all of them spending the
+ * one Gmail account's daily allowance.
+ *
+ * So the gate moved to the end. You fill the whole form, press Submit, and only
+ * then does a code go out — in a dialog that verifies and submits in one go.
+ * One code per applicant, requested at the moment it is actually needed.
+ */
 export default function ApplyPage() {
   const [formState, setFormState] = useState("idle"); // idle | submitting | success | error
   const [progress, setProgress] = useState(0);
   const [serverErrors, setServerErrors] = useState({});
   const [successData, setSuccessData] = useState(null);
-  
+
   const [selectedDomains, setDomains] = useState([]);
   const [resumeFile, setResumeFile] = useState(null);
   const [year, setYear] = useState("");
@@ -23,11 +46,20 @@ export default function ApplyPage() {
   const [q2, setQ2] = useState("");
 
   const [srmEmail, setSrmEmail] = useState("");
-  const [otpState, setOtpState] = useState("idle"); // idle | sending | sent | verifying | verified
+  // The address a code was actually accepted for. Comparing it against the live
+  // field is what catches someone verifying, then editing the email.
+  const [verifiedEmail, setVerifiedEmail] = useState(null);
+
+  const [otpOpen, setOtpOpen] = useState(false);
+  const [otpState, setOtpState] = useState("idle"); // idle | sending | sent | verifying
   const [otpError, setOtpError] = useState("");
   const [otpValue, setOtpValue] = useState("");
+  const [cooldown, setCooldown] = useState(0);
 
   const formRef = useRef(null);
+  const otpInputRef = useRef(null);
+
+  const isVerified = verifiedEmail !== null && verifiedEmail === srmEmail.trim().toLowerCase();
 
   const toggleDomain = useCallback((label) => {
     setDomains((prev) => {
@@ -37,32 +69,112 @@ export default function ApplyPage() {
     });
   }, []);
 
-  const sendOtp = async () => {
-    setOtpError("");
-    if (!/^[a-zA-Z]{2}\d{4}@srmist\.edu\.in$/i.test(srmEmail)) {
-      setOtpError("Please enter a valid SRM email (xx1234@srmist.edu.in)");
+  // Resend cooldown tick
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
+  useEffect(() => {
+    if (otpOpen) otpInputRef.current?.focus();
+  }, [otpOpen]);
+
+  // ─── Step 1: everything except the code ────────────────────────────────────
+
+  /**
+   * Runs the browser's own required/type checks plus every rule the server will
+   * apply anyway. Deliberately thorough: a code is emailed the moment this
+   * passes, so anything caught here instead of by the API is one send saved.
+   */
+  function validateForm() {
+    const errors = {};
+
+    if (!SRM_EMAIL_RE.test(srmEmail.trim())) {
+      errors.srmEmail = "Enter your SRM email in the format xx1234@srmist.edu.in";
+    }
+    const regNo = formRef.current?.elements?.registrationNumber?.value?.trim() ?? "";
+    if (!/^RA2\d{12}$/i.test(regNo)) {
+      errors.registrationNumber = "Registration number must look like RA2xxxxxxxxxxxx (15 characters)";
+    }
+    if (selectedDomains.length === 0) {
+      errors.domains = "Please select at least one domain preference";
+    }
+    if (q1.trim().length < 10) {
+      errors.question1 = "Please write at least 10 characters";
+    } else if (words(q1) > 200) {
+      errors.question1 = "Please keep this to 200 words or fewer";
+    }
+    if (q2.trim().length < 10) {
+      errors.question2 = "Please write at least 10 characters";
+    } else if (words(q2) > 200) {
+      errors.question2 = "Please keep this to 200 words or fewer";
+    }
+    // Resume is required for 2nd Year + Tech domain
+    const isTech = selectedDomains.some((d) => TECH_DOMAINS.includes(d));
+    if (year === "2nd Year" && isTech && !resumeFile) {
+      errors.resume = "Resume is required for 2nd Year technical applicants";
+    }
+
+    setServerErrors(errors);
+    if (Object.keys(errors).length > 0) return false;
+
+    // Native validation last, so our messages are not buried by a browser popup
+    return formRef.current?.reportValidity() ?? true;
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (formState === "submitting") return;
+    if (!validateForm()) return;
+
+    if (isVerified) {
+      await submitApplication();
       return;
     }
+
+    setOtpValue("");
+    setOtpError("");
+    setOtpOpen(true);
+    await requestOtp();
+  }
+
+  // ─── Step 2: the code ──────────────────────────────────────────────────────
+
+  async function requestOtp() {
+    setOtpError("");
     setOtpState("sending");
     try {
       const res = await fetch("/api/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ srmEmail }),
+        body: JSON.stringify({ srmEmail: srmEmail.trim().toLowerCase() }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send OTP");
+      if (!res.ok) throw new Error(data.error || "Failed to send the code");
+
+      // Already verified in an earlier attempt — no code needed, go straight on.
+      if (data.alreadyVerified) {
+        setVerifiedEmail(srmEmail.trim().toLowerCase());
+        setOtpOpen(false);
+        setOtpState("idle");
+        await submitApplication();
+        return;
+      }
+
       setOtpState("sent");
+      setCooldown(RESEND_COOLDOWN);
     } catch (err) {
       setOtpError(err.message);
       setOtpState("idle");
     }
-  };
+  }
 
-  const verifyOtp = async () => {
+  /** Verifies the code and, the moment it lands, sends the application. */
+  async function verifyAndSubmit() {
     setOtpError("");
     if (otpValue.length !== 6) {
-      setOtpError("OTP must be 6 digits");
+      setOtpError("Enter all 6 digits");
       return;
     }
     setOtpState("verifying");
@@ -70,48 +182,41 @@ export default function ApplyPage() {
       const res = await fetch("/api/otp/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ srmEmail, otp: otpValue }),
+        body: JSON.stringify({ srmEmail: srmEmail.trim().toLowerCase(), otp: otpValue }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to verify OTP");
-      setOtpState("verified");
+      if (!res.ok) throw new Error(data.error || "Could not verify that code");
+
+      setVerifiedEmail(srmEmail.trim().toLowerCase());
+      setOtpOpen(false);
+      setOtpState("idle");
+      await submitApplication();
     } catch (err) {
       setOtpError(err.message);
       setOtpState("sent");
     }
-  };
+  }
 
-  const handleSubmit = useCallback(async (e) => {
-    e.preventDefault();
+  /** Closes the dialog so the email can be corrected, keeping the form intact. */
+  function changeEmail() {
+    setOtpOpen(false);
+    setOtpState("idle");
+    setOtpValue("");
+    setOtpError("");
+  }
+
+  // ─── Step 3: the application itself ────────────────────────────────────────
+
+  async function submitApplication() {
     setServerErrors({});
-    
-    if (otpState !== "verified") {
-      setServerErrors({ srmEmail: "Please verify your SRM email first" });
-      return;
-    }
-    if (selectedDomains.length === 0) {
-      setServerErrors({ domains: "Please select at least one domain preference" });
-      return;
-    }
-
     setFormState("submitting");
     setProgress(0);
 
     const fd = new FormData(formRef.current);
     fd.delete("domains");
     selectedDomains.forEach((d) => fd.append("domains", d));
-    
-    // Resume is required for 2nd Year + Tech domain
-    const isTech = selectedDomains.some(d => TECH_DOMAINS.includes(d));
-    if (year === "2nd Year" && isTech && !resumeFile) {
-      setServerErrors({ resume: "Resume is required for 2nd Year technical applicants" });
-      setFormState("error");
-      return;
-    }
-
     if (resumeFile) fd.set("resume", resumeFile);
-    // Explicitly set srmEmail since the input might be disabled after verification
-    fd.set("srmEmail", srmEmail);
+    fd.set("srmEmail", srmEmail.trim().toLowerCase());
 
     try {
       const data = await new Promise((resolve, reject) => {
@@ -138,8 +243,11 @@ export default function ApplyPage() {
       if (err?.fields) setServerErrors(err.fields);
       setServerErrors((prev) => ({ ...prev, _general: err?.error ?? "Submission failed. Please try again." }));
       setFormState("error");
+      // The code is spent along with the application attempt — a retry needs a
+      // fresh one, and saying so beats a silent 403 from the server.
+      if (err?.fields?.srmEmail) setVerifiedEmail(null);
     }
-  }, [selectedDomains, resumeFile, otpState, srmEmail, year]);
+  }
 
   if (formState === "success") {
     return (
@@ -203,54 +311,37 @@ export default function ApplyPage() {
             </div>
 
             <div className="otpBox">
-              <label>SRM Email <span className="req">*</span></label>
+              <label htmlFor="srmEmail">SRM Email <span className="req">*</span></label>
               <div className="otpRow">
                 <div className="otpField">
-                  <input 
-                    className="input" 
-                    type="email" 
-                    placeholder="xx1234@srmist.edu.in" 
+                  <input
+                    id="srmEmail"
+                    className="input"
+                    name="srmEmail"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    placeholder="xx1234@srmist.edu.in"
                     value={srmEmail}
-                    onChange={e => setSrmEmail(e.target.value)}
-                    disabled={otpState === "verified" || otpState === "sending" || otpState === "verifying"}
-                    style={serverErrors.srmEmail ? { borderColor: "var(--pink)" } : {}} 
+                    onChange={(e) => {
+                      setSrmEmail(e.target.value);
+                      setServerErrors((p) => ({ ...p, srmEmail: undefined }));
+                    }}
+                    style={serverErrors.srmEmail ? { borderColor: "var(--pink)" } : {}}
                   />
                   {serverErrors.srmEmail && <span style={{ fontSize: 12, color: "var(--pink)", marginTop: 4, display: "block" }}>{serverErrors.srmEmail}</span>}
                 </div>
-                {otpState === "idle" && (
-                  <button type="button" className="btn ghost" onClick={sendOtp}>Send OTP</button>
-                )}
-                {otpState === "sending" && (
-                  <button type="button" className="btn ghost" disabled>Sending...</button>
-                )}
-                {otpState === "verified" && (
+                {isVerified && (
                   <div style={{ padding: "10px 16px", color: "#00e676", background: "rgba(0,230,118,0.1)", borderRadius: 6, border: "1px solid rgba(0,230,118,0.3)", display: "flex", alignItems: "center", gap: 8 }}>
                     <span>✓</span> Verified
                   </div>
                 )}
               </div>
-              
-              {otpError && <div style={{ color: "var(--pink)", fontSize: 13, marginTop: 8 }}>{otpError}</div>}
-              
-              {(otpState === "sent" || otpState === "verifying") && (
-                <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px dashed rgba(255,255,255,0.1)" }}>
-                  <label>Enter 6-digit OTP</label>
-                  <div className="otpRow">
-                    <input 
-                      className="input" 
-                      placeholder="• • • • • •" 
-                      maxLength={6}
-                      value={otpValue}
-                      onChange={e => setOtpValue(e.target.value.replace(/\D/g, ''))}
-                      disabled={otpState === "verifying"}
-                      style={{ letterSpacing: 8, fontSize: 18, fontFamily: "monospace", maxWidth: 160 }}
-                    />
-                    <button type="button" className="btn grad sm" onClick={verifyOtp} disabled={otpState === "verifying"}>
-                      {otpState === "verifying" ? "Verifying..." : "Verify OTP"}
-                    </button>
-                  </div>
-                </div>
-              )}
+              <div style={{ fontSize: 13, color: "#8d8091", marginTop: 10, lineHeight: 1.6 }}>
+                {isVerified
+                  ? "This address is verified — hit Submit whenever you're ready."
+                  : "We'll email a 6-digit code to this address when you hit Submit. Fill the rest of the form first."}
+              </div>
             </div>
 
             <div className="groupTitle" style={{ color: "var(--lilac)" }}>ACADEMIC DETAILS</div>
@@ -349,7 +440,7 @@ export default function ApplyPage() {
                 <div style={{ position: "relative" }}>
                   <textarea className="input" name="question1" placeholder="Tell us your motivation..." rows={4}
                     value={q1} onChange={e => setQ1(e.target.value)} style={serverErrors.question1 ? { borderColor: "var(--pink)" } : {}} />
-                  <span className="counter" style={{ bottom: 12, right: 12 }}>{q1.trim().split(/\s+/).filter(Boolean).length}/200 words</span>
+                  <span className="counter" style={{ bottom: 12, right: 12 }}>{words(q1)}/200 words</span>
                 </div>
                 {serverErrors.question1 && <span style={{ fontSize: 12, color: "var(--pink)", marginTop: 4, display: "block" }}>{serverErrors.question1}</span>}
               </div>
@@ -358,7 +449,7 @@ export default function ApplyPage() {
                 <div style={{ position: "relative" }}>
                   <textarea className="input" name="question2" placeholder="Tell us about your background..." rows={4}
                     value={q2} onChange={e => setQ2(e.target.value)} style={serverErrors.question2 ? { borderColor: "var(--pink)" } : {}} />
-                  <span className="counter" style={{ bottom: 12, right: 12 }}>{q2.trim().split(/\s+/).filter(Boolean).length}/200 words</span>
+                  <span className="counter" style={{ bottom: 12, right: 12 }}>{words(q2)}/200 words</span>
                 </div>
                 {serverErrors.question2 && <span style={{ fontSize: 12, color: "var(--pink)", marginTop: 4, display: "block" }}>{serverErrors.question2}</span>}
               </div>
@@ -408,16 +499,73 @@ export default function ApplyPage() {
               </div>
             )}
 
-            <button type="submit" className="btn grad submit" disabled={formState === "submitting" || otpState !== "verified"}
-              style={(formState === "submitting" || otpState !== "verified") ? { opacity: .7, cursor: "not-allowed" } : {}}>
+            <button type="submit" className="btn grad submit"
+              disabled={formState === "submitting" || otpOpen}
+              style={(formState === "submitting" || otpOpen) ? { opacity: .7, cursor: "not-allowed" } : {}}>
               {formState === "submitting" ? "Submitting…" : "Submit Application"} <span>{formState === "submitting" ? "" : "→"}</span>
             </button>
             <div style={{ marginTop: 18, textAlign: "center", fontSize: 14, color: "#9a8d9e" }}>
-              Upon submission, we will send an email with your dashboard access password.
+              {isVerified
+                ? "Upon submission, we will send an email with your dashboard access password."
+                : "One last step after this: a 6-digit code goes to your SRM email to confirm it's yours."}
             </div>
           </form>
         </div>
       </section>
+
+      {otpOpen && (
+        <div className="modalBackdrop" role="dialog" aria-modal="true" aria-label="Verify your SRM email"
+          onClick={(e) => e.target === e.currentTarget && changeEmail()}>
+          <div className="formCard modalCard" style={{ maxWidth: 460 }}>
+            <button type="button" className="close" onClick={changeEmail} aria-label="Close">×</button>
+            <h2 className="modalTitle">Verify your SRM email</h2>
+            <p style={{ color: "#a99bad", fontSize: 14.5, margin: "-10px 0 20px", lineHeight: 1.65 }}>
+              {otpState === "sending"
+                ? <>Sending a 6-digit code to <strong style={{ color: "#f4eef6" }}>{srmEmail}</strong>…</>
+                : <>We sent a 6-digit code to <strong style={{ color: "#f4eef6" }}>{srmEmail}</strong>. Enter it below and your application goes in.</>}
+            </p>
+
+            {otpError && <div className="alert err">⚠ {otpError}</div>}
+
+            <label htmlFor="otp">6-digit code</label>
+            <input
+              id="otp"
+              ref={otpInputRef}
+              className="input"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="• • • • • •"
+              maxLength={6}
+              value={otpValue}
+              onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ""))}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); verifyAndSubmit(); } }}
+              disabled={otpState === "sending" || otpState === "verifying"}
+              style={{ letterSpacing: 8, fontSize: 20, fontFamily: "ui-monospace, monospace", textAlign: "center", marginTop: 6 }}
+            />
+
+            <button type="button" className="btn grad"
+              onClick={verifyAndSubmit}
+              disabled={otpState === "sending" || otpState === "verifying" || otpValue.length !== 6}
+              style={{ width: "100%", justifyContent: "center", marginTop: 18 }}>
+              {otpState === "verifying" ? "Verifying…" : "Verify & submit application"}
+            </button>
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 16, fontSize: 13.5 }}>
+              <button type="button" className="btnQuiet" onClick={requestOtp}
+                disabled={otpState === "sending" || otpState === "verifying" || cooldown > 0}>
+                {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
+              </button>
+              <button type="button" className="btnQuiet" onClick={changeEmail}>
+                Use a different email
+              </button>
+            </div>
+
+            <p style={{ color: "#8d8091", fontSize: 12.5, margin: "16px 0 0", lineHeight: 1.6 }}>
+              The code expires in 10 minutes. Check your spam folder if it hasn&apos;t arrived.
+            </p>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

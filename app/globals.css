@@ -405,6 +405,9 @@ textarea.input{height:106px;resize:none}
 .btnQuiet{background:transparent;border:1px solid var(--line);color:var(--text);
   padding:7px 13px;border-radius:7px;font-size:13px;white-space:nowrap}
 .btnQuiet:hover{border-color:var(--red);color:var(--red-soft)}
+/* a resend button on cooldown has to *look* unavailable, not just act it */
+.btn:disabled,.btnQuiet:disabled{opacity:.5;cursor:not-allowed}
+.btnQuiet:disabled:hover{border-color:var(--line);color:var(--text)}
 .portalMain{flex:1;padding:36px 24px 72px}
 
 /* page headers */
@@ -482,6 +485,24 @@ textarea.input{height:106px;resize:none}
 /* the submit block at the foot of a task */
 .submitBlock{border:1px solid rgba(255,45,79,.3);border-radius:10px;padding:24px;
   background:linear-gradient(150deg,rgba(255,45,79,.07),rgba(12,7,15,.55))}
+
+/* the applicants' WhatsApp group, on the dashboard.
+   Borrows the formCard shell but swaps the plum edge for WhatsApp's green, so
+   it reads as somewhere to go rather than another panel of status. */
+.joinCard{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  padding:20px 22px;margin-bottom:20px;border-radius:14px;
+  border:1px solid rgba(37,211,102,.32);
+  background:linear-gradient(150deg,rgba(37,211,102,.09),rgba(11,6,14,.9));
+  box-shadow:0 30px 90px rgba(0,0,0,.5)}
+.joinMark{width:34px;height:34px;flex:none;color:#25d366}
+.joinBody{flex:1 1 260px;min-width:0}
+.joinBody h2{margin:0 0 5px;font-size:17px;color:#f4eef6;font-weight:600}
+.joinBody p{margin:0;font-size:14px;line-height:1.6;color:var(--muted)}
+.joinBtn{flex:none}
+@media (max-width:620px){
+  .joinCard{gap:14px}
+  .joinBtn{width:100%;justify-content:center}
+}
 
 /* inline feedback */
 .alert{border-radius:8px;padding:11px 15px;margin-bottom:18px;font-size:14px;line-height:1.5}

@@ -10,7 +10,8 @@
  *   node scripts/send-test-email.mjs you@example.com
  *   node scripts/send-test-email.mjs you@example.com --template task
  *
- * Templates: confirmation (default) · otp · task · shortlist · interview · result
+ * Templates: confirmation (default) · resend · otp · task · extended · shortlist
+ *            · interview · result
  *
  * Requires SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / EMAIL_FROM in
  * .env.local. Nothing is written to the database.
@@ -24,6 +25,9 @@ loadEnvLocal()
 
 // The email module reads DRY_RUN at import time, so force a real send first.
 process.env.EMAIL_DRY_RUN = 'false'
+// Straight down the SMTP pipe: no outbox row, no quota accounting, no database.
+// A template check should not spend the drive's budget or leave a trail.
+process.env.EMAIL_OUTBOX = 'off'
 
 const require = createRequire(import.meta.url)
 const nodemailer = require('nodemailer')
@@ -59,6 +63,17 @@ const TEMPLATES = {
     domains: ['Web Development', 'AI / ML'],
     password: '48213',
     dueAt: days(5),
+  }),
+  // What scripts/resend-confirmations.mjs sends: same mail, plus the banner
+  // warning that the password is new and the old one is dead.
+  resend: () => sendApplicationConfirmation({
+    name: 'Shaurya',
+    email: to,
+    applicantId: 'BND-427',
+    domains: ['Web Development', 'AI / ML'],
+    password: '90416',
+    dueAt: days(5),
+    resend: true,
   }),
   task: () => sendTaskNotification({
     name: 'Shaurya',
