@@ -149,6 +149,14 @@ attempted, so a failure is a row to retry rather than a lost password. Retryable
 `npm run flush-outbox`; permanent ones (bad address) are marked `failed` and left alone.
 `emailQuota` holds one small document per IST day so the count survives restarts.
 
+**Sends are inline, deliberately.** The row is written first, then the message goes out
+before the caller gets its answer. Handing it to a background worker is the textbook shape
+and it is wrong here: on serverless the function is frozen the instant the response
+returns, which killed the send mid-flight and left confirmation rows stuck in `sending`
+with the candidate never receiving the password. Route handlers that send therefore set
+`maxDuration`, and `POST /api/applications` uses `after()` to drain any retry backlog once
+its response is out. Pass `background: true` only where nothing depends on the outcome.
+
 | Variable | Default | What it does |
 |---|---|---|
 | `SMTP_DAILY_LIMIT` | 450 | Total sends per IST day |
@@ -157,7 +165,6 @@ attempted, so a failure is a row to retry rather than a lost password. Retryable
 | `EMAIL_MAX_ATTEMPTS` | 6 | Tries before a row is marked `failed` |
 | `EMAIL_DRY_RUN` | — | `true` logs everything, sends and stores nothing |
 | `EMAIL_OUTBOX` | — | `off` bypasses the queue entirely (test script) |
-| `EMAIL_SEND_MODE` | — | `sync` sends inline and surfaces errors (scripts) |
 
 ```bash
 npm run outbox-status                        # budget + what is still owed
