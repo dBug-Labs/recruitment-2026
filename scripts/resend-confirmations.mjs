@@ -32,6 +32,7 @@
  *   node scripts/resend-confirmations.mjs                # do it
  *   node scripts/resend-confirmations.mjs --limit 50     # first 50 only
  *   node scripts/resend-confirmations.mjs --only ab1234@srmist.edu.in
+ *   node scripts/resend-confirmations.mjs --applicant BND-863
  *   node scripts/resend-confirmations.mjs --force        # include already-resent
  *   node scripts/resend-confirmations.mjs --days 7       # deadline window
  *   node scripts/resend-confirmations.mjs --skip-mail    # tasks + deadlines only
@@ -63,10 +64,8 @@ const { MongoClient } = require('mongodb')
 const bcrypt = require('bcryptjs')
 const crypto = require('crypto')
 
-// Send inline so a failure is something this script can see and react to,
-// rather than a background pump the process exits out from under.
-process.env.EMAIL_SEND_MODE = 'sync'
-
+// Sends are inline by default, so a failure is something this script can see
+// and react to rather than a background pump the process exits out from under.
 const { sendApplicationConfirmation, quotaSnapshot, outboxSummary } = await import('../lib/email/index.js')
 const { domainKeys } = await import('../lib/schemas.js')
 // The outbox opens its own pooled connection through lib/db.js. Held here so
@@ -81,12 +80,14 @@ const val  = (flag) => {
   const i = argv.indexOf(flag)
   return i !== -1 ? argv[i + 1] : undefined
 }
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const DRY_RUN   = has('--dry-run')
 const FORCE     = has('--force')
 const SKIP_MAIL = has('--skip-mail')
 const KEEP_DUE  = has('--keep-deadlines')
 const ONLY      = val('--only')?.toLowerCase()
+const APPLICANT = val('--applicant')?.trim()
 const LIMIT     = Number(val('--limit')) || 0
 const DAYS      = Number(val('--days')) || Number(process.env.TASK_WINDOW_DAYS ?? 5)
 
@@ -123,13 +124,17 @@ async function main() {
 
   const filter = { driveId: DRIVE_ID }
   if (ONLY) filter.srmEmail = ONLY
-  if (!FORCE && !ONLY) filter.confirmationResentAt = { $exists: false }
+  if (APPLICANT) filter.applicantId = new RegExp(`^${escapeRegExp(APPLICANT)}$`, 'i')
+  if (!FORCE && !ONLY && !APPLICANT) filter.confirmationResentAt = { $exists: false }
 
   const candidates = await apps.find(filter).sort({ createdAt: 1 }).toArray()
   const batch = LIMIT > 0 ? candidates.slice(0, LIMIT) : candidates
 
   console.log(`✅  Connected. Drive "${DRIVE_ID}".`)
   console.log(`\n📋  ${batch.length} application(s) to process${LIMIT > 0 ? ` (capped at ${LIMIT})` : ''}.`)
+  if (APPLICANT) {
+    console.log(`🎯  Applicant filter: ${APPLICANT}`)
+  }
   console.log(KEEP_DUE
     ? '📅  --keep-deadlines — existing deadlines left exactly as they are.'
     : `📅  New deadline for everyone: ${istStr(DUE_AT)}  (now + ${DAYS} days)`)

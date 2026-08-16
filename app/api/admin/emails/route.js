@@ -20,6 +20,13 @@ import { z } from "zod";
 const DRIVE_ID = process.env.DRIVE_ID ?? "2026";
 const CHUNK_SIZE = 10;
 
+/**
+ * Sends are paced apart to keep Gmail happy, so a whole-drive announcement is
+ * measured in tens of seconds rather than milliseconds. The counts below only
+ * mean anything if the handler is allowed to see every send finish.
+ */
+export const maxDuration = 60;
+
 const AnnouncementSchema = z.object({
   subject: z.string().min(3, "Subject must be at least 3 characters").max(150).trim(),
   message: z.string().min(10, "Message must be at least 10 characters").max(5000).trim(),

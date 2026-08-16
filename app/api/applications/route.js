@@ -25,13 +25,22 @@ import { getCollection }                  from '@/lib/db'
 import { ApplicationSchema, TECH_DOMAINS, domainKeys } from '@/lib/schemas'
 import { uploadResume, validatePdfBuffer } from '@/lib/storage'
 import { checkRateLimit, getClientIp }    from '@/lib/ratelimit'
-import { sendApplicationConfirmation }    from '@/lib/email'
+import { sendApplicationConfirmation, flushOutbox } from '@/lib/email'
+import { after }                          from 'next/server'
 import { withErrorHandling }              from '@/lib/rbac'
 import { applicationWindowState, applicationsOpenAt, applicationsCloseAt, taskDeadlineFor, fmtIstDate } from '@/lib/recruitment'
 import crypto                             from 'crypto'
 import bcrypt                             from 'bcryptjs'
 
 const DRIVE_ID = process.env.DRIVE_ID ?? '2026'
+
+/**
+ * This handler uploads a PDF, hashes a password, assigns up to two tasks and
+ * waits for the confirmation email to actually leave. The default serverless
+ * ceiling is too tight for that on a slow SMTP round trip, and a timeout here
+ * costs the candidate their password.
+ */
+export const maxDuration = 60
 
 /**
  * Human-facing applicant id: BND-### with three random digits.
@@ -327,12 +336,11 @@ export const POST = withErrorHandling(async function handler(request) {
 
   // 13. Send the confirmation with their password and personal deadline.
   //
-  //     This is awaited, but it is not the send we are waiting for: the outbox
-  //     writes the message down and returns, then delivers in the background.
-  //     Awaiting the write is what matters — the plaintext password exists
-  //     nowhere else, so it has to reach durable storage before this request
-  //     ends. If SMTP is down or out of budget, the row is retried later
-  //     instead of vanishing into a console.error the way it used to.
+  //     Fully awaited — the row is written *and* the message is put on the wire
+  //     before this request returns. It has to be: the plaintext password exists
+  //     nowhere else, and on serverless anything left running past the response
+  //     is frozen, so "queue it and move on" silently meant "never sent".
+  //     A failure here still leaves a durable row that later attempts retry.
   try {
     await sendApplicationConfirmation({
       name:          data.name,
@@ -343,8 +351,19 @@ export const POST = withErrorHandling(async function handler(request) {
       dueAt,
     })
   } catch (err) {
-    console.error('[email] Could not queue the confirmation:', err)
+    console.error('[email] Confirmation send failed (queued for retry):', err)
   }
+
+  // Anything parked by an earlier failure or by the daily budget gets a nudge
+  // once the response is out. after() keeps the function alive to do it, which
+  // a bare floating promise does not.
+  after(async () => {
+    try {
+      await flushOutbox()
+    } catch (err) {
+      console.error('[email] post-response outbox drain failed:', err)
+    }
+  })
 
   return jsonSuccess(
     {
