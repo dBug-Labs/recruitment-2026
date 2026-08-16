@@ -22,8 +22,10 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env
+# Broad on purpose: ".env*.local" misses ".env.local.bak" and friends, and an
+# editor or a hand-rolled backup only has to slip through once.
 .env
-.env*.local
+.env*
 
 # vercel
 .vercel

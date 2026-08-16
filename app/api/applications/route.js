@@ -16,7 +16,8 @@
  *  7. Password Generation & Hashing
  *  8. PDF magic-byte + size validation
  *  9. GridFS upload & Database insert
- * 10. Confirmation email with dashboard password (non-blocking)
+ * 10. Auto-assign the live task for every domain they picked
+ * 11. Confirmation email with dashboard password, queued durably
  */
 
 import { ObjectId }                       from 'mongodb'
@@ -249,6 +250,7 @@ export const POST = withErrorHandling(async function handler(request) {
     passwordHash:       passwordHash,
     status:             'submitted',
     assignedDomain:     null,
+    assignedDomains:    [],
     source:             'web_form',
     userAgent:          request.headers.get('user-agent') ?? null,
     ip,
@@ -265,56 +267,84 @@ export const POST = withErrorHandling(async function handler(request) {
   // 11. The candidate's own five-day clock starts now, not at a shared cut-off.
   const dueAt = taskDeadlineFor(now)
 
-  // 12. Hand over the task straight away if one is live for their first choice.
+  // 12. Hand over a task straight away for *every* domain they picked, not just
+  //     the first. Someone who chose two domains is judged on two briefs, so
+  //     showing them one and hiding the other loses them half the drive.
   //     The pipeline is apply → task → shortlist, so waiting for a human to
-  //     assign it would eat into the five days they were promised.
+  //     assign them would eat into the five days they were promised.
+  const assignedDomains = []
   try {
-    const firstDomain = doc.domainKeys[0]
-    if (firstDomain) {
-      const tasksCol = await getCollection('tasks')
+    const tasksCol    = await getCollection('tasks')
+    const assignments = await getCollection('assignments')
+
+    for (const domain of doc.domainKeys) {
       const task = await tasksCol.findOne(
-        { driveId: DRIVE_ID, domain: firstDomain, active: true },
+        { driveId: DRIVE_ID, domain, active: true },
         { sort: { createdAt: -1 } }
       )
-      if (task) {
-        const assignments = await getCollection('assignments')
-        await assignments.insertOne({
-          driveId:       DRIVE_ID,
-          applicationId: applicationObjectId,
-          taskId:        task._id,
-          domain:        task.domain,
-          status:        'assigned',
-          dueAt,
-          submission:    null,
-          history:       [],
-          score:         null,
-          feedback:      '',
-          assignedBy:    { id: 'system', email: 'auto-assign' },
-          assignedAt:    now,
-          updatedAt:     now,
-        })
-        await appCol.updateOne(
-          { _id: applicationObjectId },
-          { $set: { status: 'task_assigned', assignedDomain: task.domain, updatedAt: now } }
-        )
-      } else {
-        console.warn(`[applications] no active task for domain "${firstDomain}" — nothing auto-assigned`)
+      if (!task) {
+        console.warn(`[applications] no active task for domain "${domain}" — nothing auto-assigned`)
+        continue
       }
+
+      await assignments.insertOne({
+        driveId:       DRIVE_ID,
+        applicationId: applicationObjectId,
+        taskId:        task._id,
+        domain:        task.domain,
+        status:        'assigned',
+        dueAt,
+        submission:    null,
+        history:       [],
+        score:         null,
+        feedback:      '',
+        assignedBy:    { id: 'system', email: 'auto-assign' },
+        assignedAt:    now,
+        updatedAt:     now,
+      })
+      assignedDomains.push(task.domain)
+    }
+
+    if (assignedDomains.length > 0) {
+      await appCol.updateOne(
+        { _id: applicationObjectId },
+        {
+          $set: {
+            status:          'task_assigned',
+            // Kept singular for the existing admin scoping; the array is the
+            // honest answer once someone holds two briefs.
+            assignedDomain:  assignedDomains[0],
+            assignedDomains,
+            updatedAt:       now,
+          },
+        }
+      )
     }
   } catch (err) {
     // A failed auto-assign must not lose the application; an admin can assign later.
     console.error('[applications] auto-assign failed:', err)
   }
 
-  // 13. Send confirmation email with password and their personal deadline
-  sendApplicationConfirmation({
-    name:          data.name,
-    email:         data.srmEmail,
-    applicantId,
-    domains:       data.domains,
-    password:      plainPassword,
-    dueAt,
-  }).catch((err) => console.error('[email] Confirmation send failed:', err))
+  // 13. Send the confirmation with their password and personal deadline.
+  //
+  //     This is awaited, but it is not the send we are waiting for: the outbox
+  //     writes the message down and returns, then delivers in the background.
+  //     Awaiting the write is what matters — the plaintext password exists
+  //     nowhere else, so it has to reach durable storage before this request
+  //     ends. If SMTP is down or out of budget, the row is retried later
+  //     instead of vanishing into a console.error the way it used to.
+  try {
+    await sendApplicationConfirmation({
+      name:          data.name,
+      email:         data.srmEmail,
+      applicantId,
+      domains:       data.domains,
+      password:      plainPassword,
+      dueAt,
+    })
+  } catch (err) {
+    console.error('[email] Could not queue the confirmation:', err)
+  }
 
   return jsonSuccess(
     {

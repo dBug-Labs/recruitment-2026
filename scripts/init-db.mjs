@@ -123,6 +123,34 @@ async function init() {
   ])
   console.log('   ✓ Indexes created for interviews\n')
 
+  // ─── emailOutbox ──────────────────────────────────────────────────────────
+  console.log('📨  Setting up collection: emailOutbox')
+  await db.createCollection('emailOutbox').catch(() => {})
+  const emailOutbox = db.collection('emailOutbox')
+  await emailOutbox.createIndexes([
+    // Exactly the shape the outbox drain queries on: due work, best first.
+    { key: { status: 1, nextAttemptAt: 1, priority: 1, createdAt: 1 }, name: 'drain_order' },
+    { key: { status: 1, claimedAt: 1 }, name: 'stale_claims' },
+    { key: { to: 1, kind: 1 },          name: 'recipient_kind' },
+    { key: { createdAt: -1 },           name: 'created_at_desc' },
+    // Delivered mail is only kept for a fortnight — the html field is bulky and
+    // nobody audits a receipt that old.
+    {
+      key: { sentAt: 1 },
+      name: 'ttl_sent',
+      expireAfterSeconds: 14 * 24 * 60 * 60,
+      partialFilterExpression: { status: 'sent' },
+    },
+  ])
+  console.log('   ✓ Indexes created for emailOutbox\n')
+
+  // ─── emailQuota ───────────────────────────────────────────────────────────
+  // One tiny document per IST day, _id = "YYYY-MM-DD". No index needed beyond
+  // the _id it is always looked up by; created here so it shows in the summary.
+  console.log('📊  Setting up collection: emailQuota')
+  await db.createCollection('emailQuota').catch(() => {})
+  console.log('   ✓ emailQuota ready\n')
+
   // ─── auditLog ─────────────────────────────────────────────────────────────
   console.log('📜  Setting up collection: auditLog')
   await db.createCollection('auditLog').catch(() => {})

@@ -68,6 +68,11 @@ dashboard — keep them in sync if you change one:
 Candidates see exactly where they are at `/dashboard`; the task brief PDF is embedded
 inline on the task page, with the submit form directly beneath it.
 
+Set `WHATSAPP_GROUP_URL` and a **Join the applicants' WhatsApp group** card appears on the
+dashboard. It is read server-side, not `NEXT_PUBLIC_`, so the invite link never ships to
+anyone who is not signed in — an invite URL is a join token. Leave it unset and the card
+does not render.
+
 ### Dates and the five-day rule
 
 `lib/recruitment.js` owns the calendar and nothing else should re-derive it:
@@ -79,10 +84,13 @@ inline on the task page, with the submit form directly beneath it.
 | Task window | 5 days **from each candidate's own registration** | `TASK_WINDOW_DAYS` |
 
 The task window is per-person, not a shared cut-off: apply on the 28th and your task is
-due on 2 September. Because of that, the task is **auto-assigned the moment an
-application is submitted** (if an active task exists for their first-choice domain) —
-waiting on a human would eat into the five days. `POST /api/admin/assignments` defaults
-to the same rule; an explicit `dueAt` still wins.
+due on 2 September. Because of that, tasks are **auto-assigned the moment an application
+is submitted** — waiting on a human would eat into the five days. A candidate gets the
+live task for **every** domain they picked, not just their first choice: someone who
+chose two domains is judged on two briefs, so both appear on their dashboard from the
+start. Domains with no active task are skipped with a warning and can be assigned by hand
+later. `POST /api/admin/assignments` defaults to the same five-day rule; an explicit
+`dueAt` still wins.
 
 The intake window is enforced in `POST /api/applications`. Outside production it logs a
 warning and lets the request through, so the form stays testable off-season.
@@ -119,6 +127,59 @@ The dashboard password is a 5-digit numeric code, stored bcrypt-hashed and sent 
 email. That is a 100,000-key space — fine for a short-lived recruitment portal, not for
 anything holding data worth stealing.
 
+**The plaintext exists only in that email.** There is no recovery path: if the send is
+lost, the candidate cannot log in and the only fix is to rotate the password and mail a
+new one — which is exactly what `npm run resend-confirmations` does.
+
+## Email: one account, one budget
+
+Everything goes out through a single Gmail account, and Gmail caps a free account at
+roughly 500 messages a day. Two rules in `lib/email/outbox.js` keep that shared budget
+from being spent on the wrong thing:
+
+**A reserve.** Every send declares a `kind`. OTPs and bulk announcements may only spend
+down to `SMTP_DAILY_LIMIT − SMTP_OTP_RESERVE`; the last slice belongs to confirmations,
+task notices and results. A candidate can therefore never be locked out of their
+dashboard because verification traffic ate the day's allowance. When an OTP is refused
+the form says so plainly — a 503, not a cheerful "code sent" for a mail that never left.
+
+**A durable queue.** Every real message is written to `emailOutbox` *before* delivery is
+attempted, so a failure is a row to retry rather than a lost password. Retryable failures
+(4xx, network, "daily sending limit") back off and are picked up by the next send or by
+`npm run flush-outbox`; permanent ones (bad address) are marked `failed` and left alone.
+`emailQuota` holds one small document per IST day so the count survives restarts.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `SMTP_DAILY_LIMIT` | 450 | Total sends per IST day |
+| `SMTP_OTP_RESERVE` | 120 | Held back for mail a candidate needs |
+| `SMTP_MIN_INTERVAL_MS` | 900 | Gap between sends, to dodge burst throttling |
+| `EMAIL_MAX_ATTEMPTS` | 6 | Tries before a row is marked `failed` |
+| `EMAIL_DRY_RUN` | — | `true` logs everything, sends and stores nothing |
+| `EMAIL_OUTBOX` | — | `off` bypasses the queue entirely (test script) |
+| `EMAIL_SEND_MODE` | — | `sync` sends inline and surfaces errors (scripts) |
+
+```bash
+npm run outbox-status                        # budget + what is still owed
+npm run flush-outbox                         # deliver everything due
+npm run resend-confirmations -- --dry-run    # see the plan
+npm run resend-confirmations                 # rotate passwords, re-mail, reset deadlines
+```
+
+`resend-confirmations` is the recovery tool: it assigns any missing per-domain tasks,
+resets every deadline to one shared `now + TASK_WINDOW_DAYS`, mints a fresh password and
+re-sends the confirmation. It is safe to re-run — rows carry `confirmationResentAt` and
+are skipped — so a run stopped by the daily budget continues tomorrow where it left off.
+
+### Where verification sits on the form
+
+The OTP gate is at the **end** of `/apply`, not the top. It used to block the first
+field, so people asked for a code, filled the rest of the form, let the ten minutes
+lapse, and asked again — several codes each, most never used. Now the whole form is
+filled first; pressing Submit sends one code into a dialog that verifies and submits in a
+single step. The client also runs the server's own validation rules before asking for a
+code, so a malformed registration number costs nothing.
+
 ## Files
 - `app/page.jsx` — the landing page (nav, hero, why, timeline, domains, apply, footer). Server Component.
 - `app/_components/domains.js` — all marketing copy for the ten domains, in one place.
@@ -126,7 +187,8 @@ anything holding data worth stealing.
 - `app/_components/DomainGrid.jsx` — the cards plus their explainer popups.
 - `app/globals.css` — all colors, type scale and component styles, including the portal shell.
 - `app/layout.jsx` — fonts wired via `next/font/google`, plus the `viewport` export.
-- `lib/` — `db` (Mongo singleton), `auth` (Auth.js v5), `rbac`, `schemas` (zod), `storage` (GridFS), `email`, `audit`, `ratelimit`.
+- `lib/` — `db` (Mongo singleton), `auth` (Auth.js v5), `rbac`, `schemas` (zod), `storage` (GridFS), `audit`, `ratelimit`.
+- `lib/email/` — `index` (one function per message), `outbox` (the queue, the budget and the reserve), `transport` (nodemailer, and which failures are worth retrying).
 - `public/logo.png` — dBug Labs mark. `public/hero.png` — replace with your rooftop render.
 
 ## Fonts (exactly what the mockups use)
