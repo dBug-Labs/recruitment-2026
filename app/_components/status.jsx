@@ -39,13 +39,23 @@ export function AssignmentPill({ status }) {
   return <span className={`pill ${meta.tone}`}>{meta.label}</span>
 }
 
-/** Consistent India-time formatting for every date shown in the panel. */
+/**
+ * Consistent India-time formatting for every date shown in the panel.
+ *
+ * `timeZone` is not optional here. Without it these fall back to the runtime's
+ * zone, which is UTC on the server and IST in the admin's browser — so a slot
+ * booked for 9:00 PM rendered as 3:30 pm server-side and then flipped to 9:00
+ * pm on hydration. Every stored date is a UTC instant; IST is the one zone the
+ * drive is actually run in, so pin it and let both sides agree.
+ */
+const IST = 'Asia/Kolkata'
+
 export function fmtDate(value) {
   if (!value) return '—'
-  return new Date(value).toLocaleDateString('en-IN', { dateStyle: 'medium' })
+  return new Date(value).toLocaleDateString('en-IN', { timeZone: IST, dateStyle: 'medium' })
 }
 
 export function fmtDateTime(value) {
   if (!value) return '—'
-  return new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+  return new Date(value).toLocaleString('en-IN', { timeZone: IST, dateStyle: 'medium', timeStyle: 'short' })
 }

@@ -75,14 +75,38 @@ export const POST = withErrorHandling(async function handler(request) {
     { $set: { status: "interview_scheduled", updatedAt: now } }
   );
 
-  // Non-blocking — a mail failure must not lose the scheduled interview
-  sendInterviewInvitation({
-    name:     application.name,
-    email:    application.srmEmail,
-    slotAt:   doc.slotAt,
-    mode:     data.mode,
-    location: data.location,
-  }).catch((err) => console.error("[email] Failed to send interview invite:", err));
+  // Awaited on purpose. This used to be fire-and-forget so a mail failure could
+  // not lose the scheduled interview — but the send never happened at all: the
+  // serverless function is frozen the moment the response is returned, so the
+  // detached promise died somewhere inside SMTP and the candidate was never
+  // told. Same shape as the confirmation bug. The interview is already written,
+  // so an await here still cannot lose it; it just costs a second and tells us
+  // the truth about whether the invite left.
+  let emailSent = false;
+  let emailError = null;
+  try {
+    await sendInterviewInvitation({
+      name:     application.name,
+      email:    application.srmEmail,
+      slotAt:   doc.slotAt,
+      mode:     data.mode,
+      location: data.location,
+    });
+    emailSent = true;
+  } catch (err) {
+    emailError = err.message;
+    // `pending` means the outbox will retry it; anything else is dead until
+    // someone runs the flush script.
+    console.error(
+      `[email] interview invite → ${application.srmEmail} failed (${err.outboxStatus ?? "unknown"}):`,
+      err.message
+    );
+  }
+
+  await col.updateOne(
+    { _id: result.insertedId },
+    { $set: { invitedAt: emailSent ? new Date() : null, inviteError: emailError, updatedAt: new Date() } }
+  );
 
   await logAudit({
     actorId:    user.id,
@@ -95,7 +119,12 @@ export const POST = withErrorHandling(async function handler(request) {
   });
 
   return new Response(
-    JSON.stringify({ success: true, interviewId: result.insertedId.toString() }),
+    JSON.stringify({
+      success:     true,
+      interviewId: result.insertedId.toString(),
+      emailSent,
+      ...(emailError ? { emailError } : {}),
+    }),
     { status: 201, headers: { "Content-Type": "application/json" } }
   );
 });

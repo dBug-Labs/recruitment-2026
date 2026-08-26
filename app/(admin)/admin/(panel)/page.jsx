@@ -4,7 +4,10 @@ import { getCollection } from "@/lib/db";
 import { requireStaff } from "@/lib/rbac";
 import { APPLICATION_STATUSES, DOMAIN_META, domainLabel } from "@/lib/schemas";
 import { applicationScope, domainScope } from "../_components/scope";
+import OutboxPanel from "../_components/OutboxPanel";
 import { StatusPill, fmtDate, fmtDateTime } from "@/app/_components/status";
+import { quotaSnapshot, outboxSummary } from "@/lib/email";
+import { ROLES } from "@/lib/rbac";
 
 export const metadata = { title: "Overview · Admin" };
 
@@ -41,6 +44,17 @@ export default async function AdminOverviewPage() {
 
   const counts = Object.fromEntries(statusRows.map((r) => [r._id, r.n]));
   const domainCounts = Object.fromEntries(domainRows.map((r) => [r._id, r.n]));
+
+  // Read here rather than fetched by the panel, so a queue that is quietly
+  // backed up is visible the moment the page paints instead of one round-trip
+  // later. Never fatal: the overview is not worth losing over a mail counter.
+  let outboxState = null;
+  try {
+    const [quota, outbox] = await Promise.all([quotaSnapshot(), outboxSummary()]);
+    outboxState = { quota, outbox };
+  } catch (err) {
+    console.error("[admin] could not read the email outbox:", err);
+  }
 
   return (
     <div>
@@ -142,6 +156,10 @@ export default async function AdminOverviewPage() {
               </div>
             )}
           </section>
+
+          {outboxState && (
+            <OutboxPanel initial={outboxState} canFlush={user.role === ROLES.ADMIN} />
+          )}
 
           <section className="formCard" style={{ padding: 24 }}>
             <h2 style={{ fontSize: 15, letterSpacing: 1.4, color: "#8d8091", margin: "0 0 16px", textTransform: "uppercase" }}>

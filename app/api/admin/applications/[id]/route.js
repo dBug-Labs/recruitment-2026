@@ -14,7 +14,7 @@ import { ObjectId } from "mongodb";
 import { requireStaff, hasDomainAccess, ROLES, withErrorHandling } from "@/lib/rbac";
 import { StatusTransitionSchema, STATUS_TRANSITIONS, domainKeys } from "@/lib/schemas";
 import { logAudit } from "@/lib/audit";
-import { sendResultNotification, sendShortlistNotification } from "@/lib/email";
+import { sendResultNotification, sendShortlistNotification, sendInterviewShortlist } from "@/lib/email";
 
 export const PATCH = withErrorHandling(async function handler(request, { params }) {
   const { id } = await params;
@@ -79,29 +79,67 @@ export const PATCH = withErrorHandling(async function handler(request, { params 
     ip: request.headers.get("x-forwarded-for") || "unknown"
   });
 
-  // Auto-send lifecycle emails — non-blocking, keyed off the candidate's SRM email
-  if (status === "shortlisted") {
-    sendShortlistNotification({
-      name: application.name,
-      email: application.srmEmail,
-    }).catch(err => console.error("[email] Shortlist notification failed:", err));
-  } else if (status === "selected") {
-    sendResultNotification({
-      name: application.name,
-      email: application.srmEmail,
-      selected: true,
-      onboardingUrl: process.env.NEXT_PUBLIC_BASE_URL ? `${process.env.NEXT_PUBLIC_BASE_URL}/onboarding` : undefined
-    }).catch(err => console.error("[email] Selected send failed:", err));
-  } else if (status === "rejected") {
-    sendResultNotification({
-      name: application.name,
-      email: application.srmEmail,
-      selected: false
-    }).catch(err => console.error("[email] Rejected send failed:", err));
+  const { emailSent, emailError } = await notifyCandidate(status, application);
+
+  return json({ success: true, status, emailSent, ...(emailError ? { emailError } : {}) });
+});
+
+/**
+ * The lifecycle mail for a status move, keyed off the candidate's SRM email.
+ *
+ * Awaited, not detached. These were fire-and-forget `.catch()` calls, which on
+ * serverless means the promise is killed the instant the response returns — the
+ * status flipped in the panel and no mail was ever sent, with only a log line
+ * that nobody was around to read. Awaiting costs the request a second and makes
+ * the outcome something the admin can actually see.
+ *
+ * A failure is reported, never thrown: the status change is already committed
+ * and re-sending a mail is cheap, so losing the transition would be the worse
+ * trade.
+ *
+ * @returns {Promise<{ emailSent: boolean, emailError: string|null }>}
+ */
+async function notifyCandidate(status, application) {
+  const to = { name: application.name, email: application.srmEmail };
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  let send;
+  switch (status) {
+    case "shortlisted":
+      send = () => sendShortlistNotification(to);
+      break;
+    // Moved here by hand rather than through the Schedule-an-interview modal,
+    // so there is no slot to quote yet. POST /api/admin/interviews sends the
+    // invitation with the actual date; this one only says "you're through, the
+    // slot is coming" — without it this transition mailed nothing at all.
+    case "interview_scheduled":
+      send = () => sendInterviewShortlist(to);
+      break;
+    case "selected":
+      send = () => sendResultNotification({
+        ...to,
+        selected: true,
+        onboardingUrl: baseUrl ? `${baseUrl}/onboarding` : undefined,
+      });
+      break;
+    case "rejected":
+      send = () => sendResultNotification({ ...to, selected: false });
+      break;
+    default:
+      return { emailSent: false, emailError: null };
   }
 
-  return json({ success: true, status });
-});
+  try {
+    await send();
+    return { emailSent: true, emailError: null };
+  } catch (err) {
+    console.error(
+      `[email] ${status} → ${application.srmEmail} failed (${err.outboxStatus ?? "unknown"}):`,
+      err.message
+    );
+    return { emailSent: false, emailError: err.message };
+  }
+}
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {

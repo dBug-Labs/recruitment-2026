@@ -69,7 +69,7 @@ export default function AssignTaskModal({ applicationId, candidateName, tasks, o
               onChange={(e) => setDueAt(e.target.value)}
             />
             <div style={{ fontSize: 12.5, color: "#8d8091", marginTop: 6 }}>
-              Leave blank to use the task deadline{selected ? ` (${new Date(selected.dueAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })})` : ""}.
+              Leave blank to use the task deadline{selected ? ` (${new Date(selected.dueAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })})` : ""}.
             </div>
           </div>
 
