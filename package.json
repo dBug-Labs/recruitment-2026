@@ -18,7 +18,8 @@
     "seed-admins": "node scripts/seed-admins.mjs",
     "flush-outbox": "node scripts/flush-outbox.mjs",
     "outbox-status": "node scripts/flush-outbox.mjs --status",
-    "resend-confirmations": "node scripts/resend-confirmations.mjs"
+    "resend-confirmations": "node scripts/resend-confirmations.mjs",
+    "resend-interviews": "node scripts/resend-interview-invites.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

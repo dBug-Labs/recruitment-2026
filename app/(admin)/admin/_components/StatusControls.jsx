@@ -17,6 +17,7 @@ export default function StatusControls({ application, tasks, canOverride, hasOpe
   const [override, setOverride] = useState(false);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [mailWarning, setMailWarning] = useState(null);
   const [modal, setModal] = useState(null); // 'task' | 'interview' | null
 
   const allowed = [...(STATUS_TRANSITIONS[status] ?? [])];
@@ -25,6 +26,7 @@ export default function StatusControls({ application, tasks, canOverride, hasOpe
   async function updateStatus(next) {
     setBusy(next);
     setError(null);
+    setMailWarning(null);
     try {
       const res = await fetch(`/api/admin/applications/${application._id}`, {
         method: "PATCH",
@@ -33,6 +35,10 @@ export default function StatusControls({ application, tasks, canOverride, hasOpe
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to update status");
+      // The status moved regardless; the mail is the part that can quietly fail.
+      if (data.emailSent === false) {
+        setMailWarning(data.emailError || "The candidate was not emailed.");
+      }
       setStatus(next);
       router.refresh();
     } catch (err) {
@@ -53,6 +59,11 @@ export default function StatusControls({ application, tasks, canOverride, hasOpe
         </div>
 
         {error && <div className="alert err" style={{ marginTop: 14, marginBottom: 0 }}>⚠ {error}</div>}
+        {mailWarning && (
+          <div className="alert err" style={{ marginTop: 14, marginBottom: 0 }}>
+            ⚠ Status updated, but the notification email did not go out: {mailWarning}
+          </div>
+        )}
 
         <div style={{ marginTop: 18 }}>
           <div style={{ fontSize: 11.5, letterSpacing: 1.5, color: "#8d8091", marginBottom: 10, textTransform: "uppercase" }}>

@@ -14,6 +14,7 @@ export default function ScheduleInterviewModal({ applicationId, candidateName, d
   });
   const [state, setState] = useState("idle");
   const [error, setError] = useState("");
+  const [mail, setMail] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -43,8 +44,11 @@ export default function ScheduleInterviewModal({ applicationId, candidateName, d
         throw new Error(data.error || "Could not schedule the interview");
       }
       setState("done");
+      setMail({ sent: data.emailSent !== false, error: data.emailError });
       onDone?.();
-      setTimeout(onClose, 700);
+      // Hold the modal open when the invite did not go out — the interview is
+      // saved either way, but the admin needs to know the candidate wasn't told.
+      if (data.emailSent !== false) setTimeout(onClose, 700);
     } catch (err) {
       setError(err.message);
       setState("idle");
@@ -65,7 +69,15 @@ export default function ScheduleInterviewModal({ applicationId, candidateName, d
         </p>
 
         {error && <div className="alert err">⚠ {error}</div>}
-        {state === "done" && <div className="alert ok">✓ Interview scheduled.</div>}
+        {state === "done" && mail?.sent && (
+          <div className="alert ok">✓ Interview scheduled and the invite has been emailed.</div>
+        )}
+        {state === "done" && mail && !mail.sent && (
+          <div className="alert err">
+            ⚠ Interview saved, but the invite email did not go out{mail.error ? `: ${mail.error}` : "."}
+            {" "}It is queued — run <code>npm run flush-outbox</code> or tell the candidate directly.
+          </div>
+        )}
 
         <form onSubmit={submit} style={{ display: "grid", gap: 16 }}>
           <div className="two" style={{ gap: 16 }}>
