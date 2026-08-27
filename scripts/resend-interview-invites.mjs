@@ -31,7 +31,21 @@
  *   node scripts/resend-interview-invites.mjs --force     # re-send already-invited
  *   node scripts/resend-interview-invites.mjs --past      # include past slots
  *
- * Safe to re-run: `invitedAt` is stamped on success, so a run stopped by the
+ * ─── --group-only ────────────────────────────────────────────────────────────
+ *
+ *   node scripts/resend-interview-invites.mjs --group-only
+ *
+ * Sends the WhatsApp group link on its own instead of the full invitation, for
+ * candidates whose invite went out before the link was added to the template.
+ * Repeating the whole invitation would read as a duplicate and prompt the one
+ * question it must not — "has my slot moved?" — so that mail confirms the slot
+ * and asks for one thing. It is also how to reach everyone if the WhatsApp
+ * invite is ever rotated mid-drive: --group-only --force.
+ *
+ * The two modes keep separate stamps (`invitedAt`, `groupInviteAt`), so
+ * neither can be mistaken for the other on a re-run.
+ *
+ * Safe to re-run: the stamp is written on success, so a run stopped by the
  * daily SMTP budget picks up exactly where it left off.
  *
  * Interviews whose slot has already gone are skipped by default — mailing
@@ -50,7 +64,8 @@ const { MongoClient } = require('mongodb')
 
 // Sends are inline by default, so a failure is something this script can see
 // and react to rather than a background pump the process exits out from under.
-const { sendInterviewInvitation, quotaSnapshot, outboxSummary } = await import('../lib/email/index.js')
+const { sendInterviewInvitation, sendInterviewGroupInvite, quotaSnapshot, outboxSummary } =
+  await import('../lib/email/index.js')
 const { clientPromise: libClientPromise } = await import('../lib/db.js')
 
 // ─── Arguments ────────────────────────────────────────────────────────────────
@@ -62,11 +77,17 @@ const val  = (flag) => {
   return i !== -1 ? argv[i + 1] : undefined
 }
 
-const DRY_RUN = has('--dry-run')
-const FORCE   = has('--force')
-const PAST    = has('--past')
-const ONLY    = val('--only')?.toLowerCase()
-const LIMIT   = Number(val('--limit')) || 0
+const DRY_RUN    = has('--dry-run')
+const FORCE      = has('--force')
+const PAST       = has('--past')
+const GROUP_ONLY = has('--group-only')
+const ONLY       = val('--only')?.toLowerCase()
+const LIMIT      = Number(val('--limit')) || 0
+
+/** What the run sends, and the stamp that says it already did. */
+const MODE = GROUP_ONLY
+  ? { label: 'WhatsApp group link', stamp: 'groupInviteAt', errField: 'groupInviteError' }
+  : { label: 'interview invitation', stamp: 'invitedAt',    errField: 'inviteError'      }
 
 const uri      = process.env.MONGODB_URI
 const dbName   = process.env.MONGODB_DB
@@ -94,9 +115,9 @@ async function main() {
   const interviewsCol = db.collection('interviews')
 
   const match = { driveId: DRIVE_ID, status: 'scheduled' }
-  // `invitedAt` did not exist before this fix, so "missing" and "null" both
-  // mean the same thing: nobody was told.
-  if (!FORCE) match.invitedAt = { $in: [null, undefined] }
+  // Neither stamp existed before this fix, so "missing" and "null" both mean
+  // the same thing: nobody was told.
+  if (!FORCE) match[MODE.stamp] = { $in: [null, undefined] }
   if (!PAST)  match.slotAt = { $gte: new Date() }
 
   const rows = await interviewsCol
@@ -114,9 +135,10 @@ async function main() {
   const batch = LIMIT > 0 ? filtered.slice(0, LIMIT) : filtered
 
   console.log(`✅  Connected. Drive "${DRIVE_ID}".`)
-  console.log(`\n📋  ${batch.length} interview(s) with no invitation sent${LIMIT > 0 ? ` (capped at ${LIMIT})` : ''}.`)
+  console.log(`\n✉️   Sending: ${MODE.label}`)
+  console.log(`📋  ${batch.length} interview(s) still owed one${LIMIT > 0 ? ` (capped at ${LIMIT})` : ''}.`)
   if (!PAST) console.log('⏭️   Past slots skipped — pass --past to include them.')
-  if (FORCE) console.log('🔁  --force — already-invited interviews are included too.')
+  if (FORCE) console.log(`🔁  --force — interviews already carrying ${MODE.stamp} are included too.`)
   if (DRY_RUN) console.log('🧪  DRY RUN — nothing will be written or sent.')
 
   if (batch.length === 0) {
@@ -152,23 +174,31 @@ async function main() {
     }
 
     try {
-      await sendInterviewInvitation({
-        name:     app.name,
-        email:    app.srmEmail,
-        slotAt:   iv.slotAt,
-        mode:     iv.mode,
-        location: iv.location,
-      })
+      if (GROUP_ONLY) {
+        await sendInterviewGroupInvite({
+          name:   app.name,
+          email:  app.srmEmail,
+          slotAt: iv.slotAt,
+        })
+      } else {
+        await sendInterviewInvitation({
+          name:     app.name,
+          email:    app.srmEmail,
+          slotAt:   iv.slotAt,
+          mode:     iv.mode,
+          location: iv.location,
+        })
+      }
       await interviewsCol.updateOne(
         { _id: iv._id },
-        { $set: { invitedAt: new Date(), inviteError: null, updatedAt: new Date() } }
+        { $set: { [MODE.stamp]: new Date(), [MODE.errField]: null, updatedAt: new Date() } }
       )
       console.log(`   ✅  ${label}`)
       stats.sent++
     } catch (err) {
       // A `pending` row is already written and will go out on the next flush,
       // so the candidate is still going to hear from us — that is not a failure
-      // to report as one. `invitedAt` stays unset so a re-run confirms it.
+      // to report as one. The stamp stays unset so a re-run confirms it.
       if (err.outboxStatus === 'pending') {
         console.log(`   📮  ${label}  — queued for retry (${err.message})`)
         stats.queued++
@@ -177,7 +207,7 @@ async function main() {
         stats.failed++
         await interviewsCol.updateOne(
           { _id: iv._id },
-          { $set: { inviteError: err.message, updatedAt: new Date() } }
+          { $set: { [MODE.errField]: err.message, updatedAt: new Date() } }
         )
       }
       if (err.code === 'EMAIL_QUOTA') {
