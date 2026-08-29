@@ -141,6 +141,10 @@ export default async function AdminApplicationDetail({ params }) {
                 <div className="k">Domains</div>
                 <div className="v" style={{ color: "var(--pink)" }}>{(application.domains ?? []).join(", ") || "—"}</div>
               </div>
+              <div className="kv">
+                <div className="k">WhatsApp</div>
+                <div className="v" style={{ color: "var(--purple-soft)" }}>{application.whatsappNumber || "—"}</div>
+              </div>
             </div>
           </section>
 
