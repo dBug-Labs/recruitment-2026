@@ -100,7 +100,11 @@ export const PATCH = withErrorHandling(async function handler(request, { params 
  * @returns {Promise<{ emailSent: boolean, emailError: string|null }>}
  */
 async function notifyCandidate(status, application) {
-  const to = { name: application.name, email: application.srmEmail };
+  const to = {
+    name: application.name,
+    email: application.srmEmail,
+    domain: application.assignedDomain || (application.assignedDomains && application.assignedDomains[0])
+  };
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
   let send;

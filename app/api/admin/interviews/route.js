@@ -91,6 +91,7 @@ export const POST = withErrorHandling(async function handler(request) {
       slotAt:   doc.slotAt,
       mode:     data.mode,
       location: data.location,
+      domain:   data.domain,
     });
     emailSent = true;
   } catch (err) {
